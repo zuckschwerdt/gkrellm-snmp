@@ -18,3 +18,23 @@ Do you want/need
 
  Diffential monitors (eg. monitor packet counters instead of gauges)?
 
+
+
+Date: 06 Jun 2000 14:59:43 +0200
+From: Torbjorn Tornkvist <tobbe@bluetail.com>
+
+Very nice ! I wonder if it would be possible to 
+receive SNMP notifications (a.k.a traps) ?
+The actual SNMP trap could be written to syslog
+and only an indication of a received trap could
+be visible.
+
+For example, it would be cool to be able to
+define a text, for example: XYZ, which is
+displayed in the GKrellM monitor. When a 
+SNMP trap is received, the text chould change
+color and/or start to flash. When the user
+notice this he checks his syslog output.
+
+-> candidate for some next release
+   trap message could be viewed as bubble help (popup).

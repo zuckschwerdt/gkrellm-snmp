@@ -1,4 +1,9 @@
+
 GKrellM_SNMP Changelog:
+
+0.9: (2000-07-25)
+- monitored values will be cached. E.g. you can switch themes without
+  losing the monitor (SNMP is to slow to re-read values that fast)
 
 0.8: (2000-06-05)
 - Bill mentioned some change for upcoming 0.10.0

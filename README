@@ -84,6 +84,11 @@ More interessting OIDs:
 - Chasis inlet temperature (tested on cisco7204VXR)
  .1.3.6.1.4.1.9.9.13.1.3.1.3.1
 
+Be always sure to prepend the leading dot "." it's much like the
+root "/" in path names.
+Mostly there is a trailing ".0" do not omit it -- it selects the first
+row (E.g. there could be more that just one value).
+
 
 Call for features!
 ==================

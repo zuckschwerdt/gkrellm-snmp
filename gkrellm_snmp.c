@@ -249,6 +249,7 @@ update_plugin()
 				reader->unit, NULL);
 	    dup_string(&reader->panel->label->string, text);
 	    //	i = atoi(text);
+	    g_free(text);
 	  }
 	  reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE);
 
@@ -315,7 +316,12 @@ create_reader(GtkWidget *vbox, Reader *reader, gint first_create)
     |  and the krell.
     */
     reader->panel->textstyle = gkrellm_meter_textstyle(DEFAULT_STYLE);
-    gkrellm_configure_panel(reader->panel, "SNMP", style);
+    gkrellm_configure_panel(reader->panel, 
+			    g_strconcat (reader->label,
+					 reader->old_sample,
+					 reader->unit, NULL),
+			    style);
+    //    gkrellm_configure_panel(reader->panel, "SNMP", style);
 
     //    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
 
@@ -427,6 +433,7 @@ load_plugin_config(gchar *arg)
 	}
 
 	reader->delay = 100; // bah. Needs to be configurable!
+	//	reader->old_sample = "SNMP"; // be nice.
       }
 
       if (!readers)
@@ -591,26 +598,24 @@ static void
 cb_enter(GtkWidget *widget)
 {
   gchar           *buf[9];
-  gint            i, n;
+  gint            i;
 
   i = 0;
   buf[i++] = entry_get_alpha_text(&label_entry);
   buf[i++] = entry_get_alpha_text(&peer_entry);
   buf[i++] = entry_get_alpha_text(&port_entry);
   buf[i++] = entry_get_alpha_text(&community_entry);
-  n = i;
   buf[i++] = entry_get_alpha_text(&oid_entry);
   buf[i++] = entry_get_alpha_text(&unit_entry);
-  buf[i++] = "100"; // entry_get_alpha_text(umount_entry);
-  buf[i++] = "yes"; // GTK_TOGGLE_BUTTON(mounting_button)->active ? "yes" : "no";
+  buf[i++] = "100"; // entry_get_alpha_text(freq_entry);
+  buf[i++] = "yes"; // GTK_TOGGLE_BUTTON(active_button)->active ? "yes" : "no";
   buf[i] = NULL;
 
-  if (*(buf[0]) == '\0' || *(buf[1]) == '\0')     /* validate we have input */
-    return;
-  if ((*(buf[n]) && !*(buf[n+1])) || (!*(buf[n]) && *(buf[n+1])))
+  /* validate we have input */
+  if (!*(buf[1]) || !*(buf[2]) || !*(buf[3]) || !*(buf[4]))
     {
       gkrellm_config_message_window("Entry Error",
-				    "Both mount and umount commands must be entered.", widget);
+				    "Peer, Port, Community and OID must be entered.", widget);
       return;
     }
   if (selected_row >= 0)
