@@ -207,12 +207,15 @@ Thanks to:
  Lasse Aagren <lasse@aagren.org>
  (reported config file reading error)
 
+ Eric Lindvall <eric@5stops.com>
+ (fixed a bug concerning the error state)
+
+
 
 AUTHOR AND WEBPAGE:
 ===================
 
 Christian W. Zuckschwerdt  <zany@triq.net>
-GKrellM SNMP can soon be found at http://triq.net/gkrellm/
+GKrellM SNMP can be found at http://triq.net/gkrellm/
 and also at GKrellM homepage http://web.wt.net/~billw/gkrellm/gkrellm.html
-
 

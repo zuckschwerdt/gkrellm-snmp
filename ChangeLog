@@ -1,10 +1,15 @@
 
 GKrellM_SNMP Changelog:
 
- 0.18 (2001-06-  )
- - TODO: probe button and capability display
  - TODO: instance mapping
  - TODO: meters
+
+0.18 (2001-07-27)
+ - probe button and capability display
+ - display device uptime in tooltip
+ - fixed field height with short labels (Ben Winslow)
+ - fixed problem with empty labels
+ - fixed the error state (Eric Lindvall)
 
 0.17 (2001-05-09)
 - added button for auto scale feature
@@ -26,48 +31,48 @@ GKrellM_SNMP Changelog:
 0.13 (2001-01-23)
 - Failed DNS lookups won't harm GKrellM anymore.
 
-0.12: (2001-01-22)
+0.12 (2001-01-22)
 - minor tweaks for GKrellM 1.0.4
 
-0.11: (2000-11-30)
+0.11 (2000-11-30)
 - Tooltips with verbose info.
 - Errors get reported to tooltip instead of clobbering STDERR
 
-0.10: (2000-09-25)
+0.10 (2000-09-25)
 - You may now select the delay between reader updates
 - Workaround for buggy cisco's reporting ASN_INTEGER's as ASN_BOOLEAN
 
-0.9: (2000-07-25)
+0.9 (2000-07-25)
 - monitored values will be cached. E.g. you can switch themes without
   losing the monitor (SNMP is to slow to re-read values that fast)
 
-0.8: (2000-06-05)
+0.8 (2000-06-05)
 - Bill mentioned some change for upcoming 0.10.0
 - Fixed ASN.1 return type strangeness with cisco7204VXR router
   thanks to Stefan Raab <stefan.raab@nextel.com> who
   brought that to my attention and provided hardware access
 
-0.7: (2000-06-04)
+0.7 (2000-06-04)
 - clean up's for first public release!
 
-0.6: (2000-06-01)
+0.6 (2000-06-01)
 - fixed some string allocation error (uninitialized)
 - finaly made SNMP request asynchronos!
 
-0.5: (2000-05-11)
+0.5 (2000-05-11)
 - different panel styles for active/errored monitors
 
-0.4: (2000-05-09)
+0.4 (2000-05-09)
 - Fixed a major Segfault - that was way to easy...
 
-0.3: (2000-05-07)
+0.3 (2000-05-07)
 - Makefile fix for FreeBSD
 - Makefile fix concerning missing PLUGIN_DIR
 - Slider now disabled (will be optional sometime)
 - You can now have multiple SNMP monitors
 
-0.2: (2000-05-06)
+0.2 (2000-05-06)
 - added ChangeLog, README, Makefile
 
-0.1: (2000-05-05)
+0.1 (2000-05-05)
 - proof of concept, test release

@@ -158,15 +158,20 @@ render_info(Reader *reader)
 {
     u_long since_last = 0;
     u_long delta;
+    gint up_d, up_h, up_m;
     
     /* 100: turn TimeTicks into seconds */
     since_last = (reader->sample_time - reader->old_sample_time) / 100;
+
+    up_d = reader->sample_time/100/60/60/24;
+    up_h = (reader->sample_time/100/60/60) % 24;
+    up_m = (reader->sample_time/100/60) % 60;
 
     delta = (reader->sample_n - reader->old_sample_n) /
 	    ( (since_last < 1) ? 1 : since_last ) /
 	    ( (reader->divisor == 0) ? 1 : reader->divisor );
 
-    return g_strdup_printf ("%s '%s' %ld (%ld s: %ld) %s  (snmp://%s@%s:%d/%s)",
+    return g_strdup_printf ("%s '%s' %ld (%ld s: %ld) %s  (snmp://%s@%s:%d/%s) Uptime: %d d %d h %d m",
 			    reader->label,
 			    reader->sample,
 			    reader->sample_n,
@@ -175,7 +180,153 @@ render_info(Reader *reader)
 			    reader->unit, 
 			    reader->community,
 			    reader->peer, reader->port,
-			    reader->oid_str );
+			    reader->oid_str,
+			    up_d, up_h, up_m );
+}
+
+gchar *
+snmp_probe(gchar *peer, gint port, gchar *community)
+{
+    oid sysDescr[MAX_OID_LEN];
+    size_t sysDescr_length;
+    oid sysObjectID[MAX_OID_LEN];
+    size_t sysObjectID_length;
+    oid sysUpTime[MAX_OID_LEN];
+    size_t sysUpTime_length;
+    oid sysContact[MAX_OID_LEN];
+    size_t sysContact_length;
+    oid sysName[MAX_OID_LEN];
+    size_t sysName_length;
+    oid sysLocation[MAX_OID_LEN];
+    size_t sysLocation_length;
+
+    struct snmp_session session, *ss;
+    struct snmp_pdu *pdu, *response;
+    struct variable_list *vars;
+
+    int count;
+    int status;
+
+    char textbuf[1024]; 
+    char *result = NULL;
+    char *tmp = NULL;
+
+    /* transform interesting OIDs */
+    sysDescr_length = MAX_OID_LEN;
+    if (!snmp_parse_oid("system.sysDescr.0", sysDescr, &sysDescr_length))
+	    printf("error parsing oid\n");
+
+    sysObjectID_length = MAX_OID_LEN;
+    if (!snmp_parse_oid("system.sysObjectID.0", sysObjectID, &sysObjectID_length))
+	    printf("error parsing oid\n");
+
+    sysUpTime_length = MAX_OID_LEN;
+    if (!snmp_parse_oid("system.sysUpTime.0", sysUpTime, &sysUpTime_length))
+	    printf("error parsing oid\n");
+
+    sysContact_length = MAX_OID_LEN;
+    if (!snmp_parse_oid("system.sysContact.0", sysContact, &sysContact_length))
+	    printf("error parsing oid\n");
+
+    sysName_length = MAX_OID_LEN;
+    if (!snmp_parse_oid("system.sysName.0", sysName, &sysName_length))
+	    printf("error parsing oid\n");
+
+    sysLocation_length = MAX_OID_LEN;
+    if (!snmp_parse_oid("system.sysLocation.0", sysLocation, &sysLocation_length))
+	    printf("error parsing oid\n");
+
+    /* initialize session to default values */
+    snmp_sess_init( &session );
+
+    session.version = SNMP_VERSION_1;
+    session.community = community;
+    session.community_len = strlen(community);
+    session.peername = peer;
+
+    /* 
+     * Open an SNMP session.
+     */
+    ss = snmp_open(&session);
+    if (ss == NULL){
+      snmp_sess_perror("snmpget", &session);
+      exit(1);
+    }
+
+    /* 
+     * Create PDU for GET request and add object names to request.
+     */
+    pdu = snmp_pdu_create(SNMP_MSG_GET);
+
+    snmp_add_null_var(pdu, sysDescr, sysDescr_length);
+    snmp_add_null_var(pdu, sysObjectID, sysObjectID_length);
+    snmp_add_null_var(pdu, sysUpTime, sysUpTime_length);
+    snmp_add_null_var(pdu, sysContact, sysContact_length);
+    snmp_add_null_var(pdu, sysName, sysName_length);
+    snmp_add_null_var(pdu, sysLocation, sysLocation_length);
+
+    /* 
+     * Perform the request.
+     *
+     * If the Get Request fails, note the OID that caused the error,
+     * "fix" the PDU (removing the error-prone OID) and retry.
+     */
+retry:
+    status = snmp_synch_response(ss, pdu, &response);
+    if (status == STAT_SUCCESS){
+      if (response->errstat == SNMP_ERR_NOERROR){
+        /* just render all vars */
+        for(vars = response->variables; vars; vars = vars->next_variable) {
+	    sprint_variable(textbuf, vars->name, vars->name_length, vars);
+	    if (result) {
+	        tmp = result;
+		result = g_strdup_printf("%s\n%s\n", tmp, textbuf);
+		g_free(tmp);
+	    } else {
+		result = g_strdup_printf("%s\n", textbuf);
+	    }
+	}
+                              
+      } else {
+        fprintf(stderr, "Error in packet\nReason: %s\n",
+                snmp_errstring(response->errstat));
+
+        if (response->errstat == SNMP_ERR_NOSUCHNAME){
+          fprintf(stderr, "This name doesn't exist: ");
+          for(count = 1, vars = response->variables; 
+                vars && count != response->errindex;
+                vars = vars->next_variable, count++)
+            /*EMPTY*/ ;
+          if (vars)
+            fprint_objid(stderr, vars->name, vars->name_length);
+          fprintf(stderr, "\n");
+        }
+
+        /* retry if the errored variable was successfully removed */
+        pdu = snmp_fix_pdu(response, SNMP_MSG_GET);
+        snmp_free_pdu(response);
+        response = NULL;
+        if (pdu != NULL)
+          goto retry;
+
+      }  /* endif -- SNMP_ERR_NOERROR */
+
+    } else if (status == STAT_TIMEOUT){
+        snmp_close(ss);
+        return g_strdup_printf("Timeout: No Response from %s.\n", session.peername);
+
+    } else {    /* status == STAT_ERROR */
+      snmp_sess_perror("snmpget", ss);
+      snmp_close(ss);
+      return NULL;
+
+    }  /* endif -- STAT_SUCCESS */
+
+    if (response)
+      snmp_free_pdu(response);
+    snmp_close(ss);
+
+    return result;
 }
 
 
@@ -275,6 +426,11 @@ snmp_input(int op,
 		g_free(reader->error);
 	    reader->error = error;
 	} else {
+	    if (reader->error)
+	    {
+		g_free (reader->error);
+		reader->error = NULL;
+	    }
 	    if (reader->sample)
 		g_free(reader->sample);
 	    /* should we save data ? */
@@ -523,6 +679,7 @@ create_reader(GtkWidget *vbox, Reader *reader, gint first_create)
       //    Krell           *k;
     Style           *style;
     //    GdkImlibImage   *krell_image;
+    gchar *text;
 
     if (first_create)
         reader->panel = gkrellm_panel_new0();
@@ -542,11 +699,7 @@ create_reader(GtkWidget *vbox, Reader *reader, gint first_create)
     |  and the krell.
     */
     reader->panel->textstyle = gkrellm_meter_textstyle(DEFAULT_STYLE);
-    gkrellm_configure_panel(reader->panel, 
-			    g_strconcat (reader->label, " ",
-					 reader->old_sample,
-					 reader->unit, NULL),
-			    style);
+    gkrellm_configure_panel(reader->panel, "SNMP", style);
     //    gkrellm_configure_panel(reader->panel, "SNMP", style);
 
     //    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
@@ -564,6 +717,11 @@ create_reader(GtkWidget *vbox, Reader *reader, gint first_create)
 			   (GtkSignalFunc) panel_expose_event, NULL);
 	reader->tooltip=gtk_tooltips_new();
     }
+
+    /* refresh the display */
+    text = render_label(reader);
+    gkrellm_dup_string(&reader->panel->label->string, text);
+    g_free(text);
 }
 
 static void
@@ -638,6 +796,7 @@ save_plugin_config(FILE *f)
   for (reader = readers; reader ; reader = reader->next) {
       label = g_strdelimit(g_strdup(reader->label), STR_DELIMITERS, '_');
       unit = g_strdelimit(g_strdup(reader->unit), STR_DELIMITERS, '_');
+      if (label[0] == '\0') label = strdup("_");
       if (unit[0] == '\0') unit = strdup("_");
       fprintf(f, "%s %s snmp://%s@%s:%d/%s %s %d %d %d %d\n",
 	      PLUGIN_CONFIG_KEYWORD,
@@ -941,6 +1100,30 @@ cb_delete(GtkWidget *widget)
     }
 }
 
+static void
+cb_probe(GtkWidget *widget)
+{
+	gchar *peer;
+	gint port;
+	gchar *community;
+	gchar *probe;
+
+	peer = gkrellm_entry_get_text(&peer_entry);
+	port = atoi(gkrellm_entry_get_text(&port_spin));
+	community = gkrellm_entry_get_text(&community_entry);
+
+	/* validate we have input */
+	if (!*(peer) || !*(community))
+	{
+		gkrellm_config_message_window("Entry Error",
+			"Peer, Port and Community must be entered.", widget);
+		return;
+	}
+	probe = snmp_probe(peer, port, community);
+	gkrellm_config_message_window("SNMP Probe", probe, widget);
+	g_free(probe);
+}
+
 
 static gchar    *plugin_info_text =
 "This configuration tab is for the SNMP monitor plugin.\n"
@@ -1014,7 +1197,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
   GtkWidget               *text;
   GtkWidget               *label;
 
-  gchar                   *buf[10];
+  gchar                   *buf[CLIST_WIDTH];
   gint                    row, i;
 
         /* Make a couple of tabs.  One for setup and one for info
@@ -1024,7 +1207,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
         gtk_box_pack_start(GTK_BOX(tab_vbox), tabs, TRUE, TRUE, 0);
 
 /* --- Setup tab */
-        vbox = create_tab(tabs, "Setup");
+        vbox = gkrellm_create_tab(tabs, "Setup");
 
 	hbox = gtk_hbox_new(FALSE,0);
 
@@ -1087,6 +1270,11 @@ create_plugin_tab(GtkWidget *tab_vbox)
 
         scale_button = gtk_check_button_new_with_label("Auto scale");
         gtk_box_pack_start(GTK_BOX(hbox),scale_button,FALSE,FALSE,0);
+
+        button = gtk_button_new_with_label("Probe");
+        gtk_signal_connect(GTK_OBJECT(button), "clicked",
+			   (GtkSignalFunc) cb_probe, NULL);
+        gtk_box_pack_start(GTK_BOX(hbox), button, FALSE, FALSE, 4);
 
 	gtk_container_add(GTK_CONTAINER(vbox),hbox);
 
@@ -1161,7 +1349,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
 
 
 /* --- Info tab */
-        vbox = create_tab(tabs, "Info");
+        vbox = gkrellm_create_tab(tabs, "Info");
         scrolled = gtk_scrolled_window_new(NULL, NULL);
         gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled),
                         GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
