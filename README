@@ -31,12 +31,13 @@ header files in some other dir, edit GKRELLM_INCLUDE in the Makefile
  
 Bugs:
 =====
-Hopefully none, but running on FreeBSD is not tested very well,
+Segfaults regularily - I'll be bug hunting asap.
 please mail any problems/bugs to me...
-
 
 Some example:
 =============
+
+1)
 
 The ambiente temperature sensor for Oldenburg i.O., Germany
 (see http://www.PMNET.uni-oldenburg.de/temperatur.php3)
@@ -50,11 +51,26 @@ That is:
  SNMP oid ".1.3.6.1.4.1.2021.8.1.101.1"
 
 
+2)
+
+Server CPU load using a string ranging from 0.00 to 1.00
+
+snmp://public@134.106.120.1/.1.3.6.1.4.1.2021.10.1.3.1
+(Thats the load factor for PMNET's Stan)
+
+3)
+
+Server CPU load using integer variable ranging from 0 to 100
+
+snmp://public@134.106.172.2/.1.3.6.1.4.1.2021.10.1.5.1
+(Thats the percentile load on PMNET's Kyle)
+
+
 Interesting questions:
 ======================
 
 Do you want/need
- monitor multiple oid's at once?
+ monitor multiple oid's on the same server? (snmp bulk get)
  charts instead of krells?
  SNMP v1, v2, v3 support?
  SNMP privacy options?
@@ -75,6 +91,15 @@ Can you give some usage examples?
 
 
 
+Tested on:
+==========
+FreeBSD  4.0 Release   w/ ucd-snmp-4.0.1   libcrypt not needed
+SuSE Linux 6.4   w/ ucd-snmp-4.0.1
+SuSE Linux 6.4   w/ ucd-snmp-4.1.1
+RedHad Linux 6.1
+
+
+
 Thanks to:
 ==========
 
@@ -82,7 +107,7 @@ Thanks to:
  (Testing on RedHad Linux)
 
  Eike Bernhardt <teefax@pmnet.uni-oldenburg.de>
- (Testing various old libs)
+ (Makefile improvements, Testing on FreeBSD)
 
 
 AUTHOR AND WEBPAGE:

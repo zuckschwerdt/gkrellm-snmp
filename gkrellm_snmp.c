@@ -50,6 +50,24 @@
 #define DEFAULT_FORMAT          "%s °C"
 
 
+typedef struct Reader Reader;
+
+struct Reader {
+  Reader           *next;
+  gchar           *label;
+  gchar            *peer;
+  gint              port;
+  gchar       *community;
+  gchar         *oid_str;
+  oid objid[MAX_OID_LEN];
+  size_t    objid_length;
+  gchar            *unit;
+  gint             delay;
+  gboolean        active;
+  Panel           *panel;
+} ;
+
+
 char *simpleSNMPget(char *peername, char *community,
 		    oid *name, size_t name_length)
 {
@@ -58,11 +76,8 @@ char *simpleSNMPget(char *peername, char *community,
     struct variable_list *vars;
 
     int count;
-    int current_name = 0;
-
     int status;
 
-    char buf[100];
     char *result = NULL;
 
 
@@ -101,10 +116,21 @@ retry:
     status = snmp_synch_response(ss, pdu, &response);
     if (status == STAT_SUCCESS){
       if (response->errstat == SNMP_ERR_NOERROR){
-        for(vars = response->variables; vars; vars = vars->next_variable)
-	  sprint_value(buf, vars->name, vars->name_length, vars);
-	result =g_strdup(buf);
-
+        for(vars = response->variables; vars; vars = vars->next_variable) {
+          if (vars->type == ASN_OCTET_STR) /* value is a string */
+	    {
+	      //printf("STRING: '%s'\n", vars->val.string);
+            result = g_strdup(vars->val.string);
+	    /* blame me this is fuk'n broken */
+	    result[4] = '\0';
+	    }
+          if (vars->type == ASN_INTEGER) /* value is a integer */
+	    {
+	      //printf("NUMBER: '%ld'\n", *vars->val.integer);
+            result = g_strdup_printf("%ld", *vars->val.integer);
+	    }
+        }
+                              
       } else {
         fprintf(stderr, "Error in packet\nReason: %s\n",
                 snmp_errstring(response->errstat));
@@ -150,194 +176,385 @@ retry:
 }
  
 
-
-
-static Panel    *panel;
-
-gchar *format;
-gchar *peername, *community, *oid_str;
-oid objid[MAX_OID_LEN];
-size_t objid_length;
+static Reader *readers;
+static GtkWidget *main_vbox;
 
 static void
 update_plugin()
 {
-  Krell       *k;
+  Reader *reader;
+  //  Krell       *k;
   gchar *p;
-  gchar buf[100];
+  gchar *text;
   gint i;
 
   if ((GK.timer_ticks % 100) == 0)
+    for (reader = readers; reader ; reader = reader->next)
     {
-      k = KRELL(panel);
-      k->previous = 0;
+      //      k = KRELL(panel);
+      //      k->previous = 0;
 
-      p = simpleSNMPget(peername, community, objid, objid_length);
-
-      if (! format || ! strlen(format)) {
-	format = g_strdup(DEFAULT_FORMAT);
-      }
+      p = simpleSNMPget(reader->peer,
+			reader->community,
+			reader->objid,
+			reader->objid_length);
 
       if (p) {
-	sprintf(buf, format, p);
+	text = g_strconcat (reader->label, p, reader->unit);
 	i = atoi(p);
 	g_free(p);
       } else {
-	strcpy(buf, "Error");
+	text = g_strdup("Error");
 	i = -1;
       }
       
-      gkrellm_update_krell(panel, k, i);
+      //      gkrellm_update_krell(panel, k, i);
 
-      panel->label->string = g_strdup(buf);
+      reader->panel->label->string = text;
 
-      gkrellm_draw_panel_label( panel, GK.bg_panel_image[CLOCK_STYLE]);
-      gkrellm_draw_layers(panel);
+      gkrellm_draw_panel_label( reader->panel, GK.bg_panel_image[CLOCK_STYLE]);
+      gkrellm_draw_layers(reader->panel);
     }
 }
 
 static gint
 panel_expose_event(GtkWidget *widget, GdkEventExpose *ev)
-    {
-    gdk_draw_pixmap(widget->window,
-            widget->style->fg_gc[GTK_WIDGET_STATE (widget)],
-            panel->pixmap, ev->area.x, ev->area.y, ev->area.x, ev->area.y,
-            ev->area.width, ev->area.height);
-    return FALSE;
+{
+  Reader *reader;
+
+  for (reader = readers; reader ; reader = reader->next)
+    if (widget == reader->panel->drawing_area) {
+
+      gdk_draw_pixmap(widget->window,
+		      widget->style->fg_gc[GTK_WIDGET_STATE (widget)],
+		      reader->panel->pixmap, ev->area.x, ev->area.y,
+		      ev->area.x, ev->area.y,
+		      ev->area.width, ev->area.height);
     }
+  return FALSE;
+}
 
 static void
-create_plugin(GtkWidget *vbox, gint first_create)
-    {
-    Krell           *k;
+create_reader(GtkWidget *vbox, Reader *reader, gint first_create)
+{
+      //    Krell           *k;
     Style           *style;
-    GdkImlibImage   *krell_image;
+    //    GdkImlibImage   *krell_image;
 
     if (first_create)
-        panel = gkrellm_panel_new0();
+        reader->panel = gkrellm_panel_new0();
     else
-        gkrellm_destroy_krell_list(panel);
+        gkrellm_destroy_krell_list(reader->panel);
 
     /* Create a krell.  A Krell structure is allocated and linked into
     |  the list of krells pointed to by panel->krell.
     */
     style = gkrellm_meter_style(DEFAULT_STYLE);
     style->label_position = LABEL_CENTER;
-    krell_image = gkrellm_krell_meter_image(DEFAULT_STYLE);
-    k = gkrellm_create_krell(panel, krell_image, style);
-    k->full_scale = 30;
+    //    krell_image = gkrellm_krell_meter_image(DEFAULT_STYLE);
+    //    k = gkrellm_create_krell(panel, krell_image, style);
+    //    k->full_scale = 30;
 
     /* Configure panel calculates the panel height needed for the "Plugin" label.
     |  and the krell.
     */
-    panel->textstyle = gkrellm_meter_textstyle(DEFAULT_STYLE);
-    gkrellm_configure_panel(panel, "SNMP", style);
+    reader->panel->textstyle = gkrellm_meter_textstyle(DEFAULT_STYLE);
+    gkrellm_configure_panel(reader->panel, "SNMP", style);
 
     /* Build the configured panel with a background image and pack it into
     |  the vbox assigned to this monitor.
     */
-    gkrellm_create_panel(vbox, panel, gkrellm_bg_meter_image(DEFAULT_STYLE));
-    gkrellm_monitor_height_adjust(panel->h);
+    gkrellm_create_panel(vbox, reader->panel, gkrellm_bg_meter_image(DEFAULT_STYLE));
+    gkrellm_monitor_height_adjust(reader->panel->h);
 
     if (first_create)
-        gtk_signal_connect(GTK_OBJECT (panel->drawing_area), "expose_event",
+        gtk_signal_connect(GTK_OBJECT (reader->panel->drawing_area), "expose_event",
                 (GtkSignalFunc) panel_expose_event, NULL);
-    }
+}
 
+static void
+destroy_reader(Reader *reader)
+{
+  if (!reader)
+    return;
+  g_free(reader->label);
+  g_free(reader->peer);
+  g_free(reader->community);
+  g_free(reader->oid_str);
+  g_free(reader->unit);
+  GK.monitor_height -= reader->panel->h;
+  gkrellm_destroy_panel(reader->panel);
+  //  gtk_widget_destroy(reader->vbox);
+  g_free(reader);
+}
+
+static void
+create_plugin(GtkWidget *vbox, gint first_create)
+{
+  Reader *reader;
+
+  main_vbox = vbox;
+
+  for (reader = readers; reader ; reader = reader->next)
+    {
+      create_reader(vbox, reader, first_create);
+    }
+}
 
 /* Config section */
 
-static GtkWidget        *peername_entry;
+static GtkWidget        *label_entry;
+static GtkWidget        *peer_entry;
+static GtkWidget        *port_entry;
 static GtkWidget        *community_entry;
 static GtkWidget        *oid_entry;
-
-static GtkWidget        *format_entry;
+static GtkWidget        *unit_entry;
+static GtkWidget        *reader_clist;
+static gint             selected_row;
+static gint             list_modified;
 
 
 static void
 save_plugin_config(FILE *f)
-        {
-        fprintf(f, "%s snmp://%s@%s/%s %s\n",
-		PLUGIN_CONFIG_KEYWORD,
-		community, peername, oid_str, format);
-        }
+{
+  Reader *reader;
+  for (reader = readers; reader ; reader = reader->next)
+    fprintf(f, "%s %s snmp://%s@%s/%s %s\n",
+	    PLUGIN_CONFIG_KEYWORD,
+	    reader->label, reader->community, reader->peer,
+	    reader->oid_str, reader->unit);
+}
 
 static void
 load_plugin_config(gchar *arg)
 {
-  gchar   proto[255], bufc[255], bufp[255], bufo[255];
-  gchar   buff[255];
+  Reader *reader, *nreader;
+
+  gchar   proto[CFG_BUFSIZE], bufl[CFG_BUFSIZE];
+  gchar   bufc[CFG_BUFSIZE], bufp[CFG_BUFSIZE];
+  gchar   bufo[CFG_BUFSIZE], bufu[CFG_BUFSIZE];
   gint    n;
 
-  n = sscanf(arg, "%[^:]://%[^@]@%[^/]/%s %[^\n]",
-	     proto, bufc, bufp, bufo, buff);
-  if (n >= 4)
+  reader = g_new0(Reader, 1); 
+
+  n = sscanf(arg, "%s %[^:]://%[^@]@%[^/]/%s %[^\n]",
+	     bufl, proto, bufc, bufp, bufo, bufu);
+  if (n >= 5)
     {
       if (g_strcasecmp(proto, "snmp") == 0) {
-	if (community)
-	  g_free(community);
-	community = g_strdup(bufc);
+	dup_string(&reader->label, bufl);
+	dup_string(&reader->community, bufc);
+	dup_string(&reader->peer, bufp);
+	dup_string(&reader->oid_str, bufo);
 
-	if (peername)
-	  g_free(peername);
-	peername = g_strdup(bufp);
+	reader->objid_length = MAX_OID_LEN;
+//	get_module_node(oid_str, "ANY", objid, &objid_length);
+	read_objid(reader->oid_str, reader->objid, &reader->objid_length);
 
-	if (oid_str)
-	  g_free(oid_str);
-	oid_str = g_strdup(bufo);
-	objid_length = MAX_OID_LEN;
-	read_objid(oid_str, objid, &objid_length);
-
-	if (n == 5) {
-	  if (format)
-	    g_free(format);
-	  format = g_strdup(buff);
+	if (n == 6) {
+	  dup_string(&reader->unit, bufu);
 	}
 
       }
+
+      if (!readers) readers = reader;
+      else { 
+	for (nreader = readers; nreader->next ; nreader = nreader->next);
+	nreader->next = reader;
+      }
+
     }
 }
 
 static void
 apply_plugin_config()
 {
+  Reader *reader, *nreader;
   gchar    *name;
-  
-  name = gtk_entry_get_text(GTK_ENTRY(peername_entry));
-  if (g_strcasecmp(peername, name) != 0)
+  gint    row;
+
+  if (!list_modified)
+    return;
+
+  for (reader = readers; reader; reader = readers) {
+    readers = reader->next;
+    destroy_reader(reader);
+  }
+
+  for (row = 0; row < GTK_CLIST(reader_clist)->rows; ++row)
     {
-      if (peername)
-	g_free(peername);
-      peername = g_strdup(name);
-    }
+      reader = g_new0(Reader, 1);
 
-  name = gtk_entry_get_text(GTK_ENTRY(community_entry));
-  if (g_strcasecmp(community, name) != 0)
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, 0, &name);
+      dup_string(&reader->label, name);
+
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, 1, &name);
+      dup_string(&reader->peer, name);
+
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, 3, &name);
+      dup_string(&reader->community, name);
+
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, 4, &name);
+      dup_string(&reader->oid_str, name);
+      reader->objid_length = MAX_OID_LEN;
+//      get_module_node(oid_str, "ANY", objid, &objid_length);
+      read_objid(reader->oid_str, reader->objid, &reader->objid_length);
+
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, 5, &name);
+      dup_string(&reader->unit, name);
+
+      if (!readers) readers = reader;
+      else { 
+	for (nreader = readers; nreader->next ; nreader = nreader->next);
+	nreader->next = reader;
+      }
+      create_reader(main_vbox, reader, 1);
+    }
+  list_modified = 0;
+}
+
+
+static void
+reset_entries()
+{
+  gtk_entry_set_text(GTK_ENTRY(label_entry), "");
+  gtk_entry_set_text(GTK_ENTRY(peer_entry), "");
+  //  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button1), FALSE);
+  gtk_entry_set_text(GTK_ENTRY(community_entry), "");
+  gtk_entry_set_text(GTK_ENTRY(oid_entry), "");
+  gtk_entry_set_text(GTK_ENTRY(unit_entry), "");
+}
+
+
+static void
+cb_clist_selected(GtkWidget *clist, gint row, gint column,
+		  GdkEventButton *bevent)
+{
+  gchar           *s;
+  gint            state, i;
+
+  i = 0;
+  gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
+  gtk_entry_set_text(GTK_ENTRY(label_entry), s);
+
+  gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
+  gtk_entry_set_text(GTK_ENTRY(peer_entry), s);
+
+  gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
+  //  gtk_entry_set_text(GTK_ENTRY(port_entry), s);
+
+  gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
+  gtk_entry_set_text(GTK_ENTRY(community_entry), s);
+
+  gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
+  gtk_entry_set_text(GTK_ENTRY(oid_entry), s);
+
+  gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
+  gtk_entry_set_text(GTK_ENTRY(unit_entry), s);
+
+  gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
+  //  gtk_entry_set_text(GTK_ENTRY(freq_entry), s);
+
+  gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
+  state = (strcmp(s, "yes") == 0) ? TRUE : FALSE;
+  //  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(mounting_button), state);
+
+  selected_row = row;
+}
+
+static void
+cb_clist_unselected(GtkWidget *clist, gint row, gint column,
+		    GdkEventButton *bevent)
+{
+  reset_entries();
+  selected_row = -1;
+}
+
+static void
+cb_clist_up(GtkWidget *widget)
+{
+  gint            row;
+
+  row = selected_row;
+  if (row > 0)
     {
-      if (community)
-	g_free(community);
-      community = g_strdup(name);
+      gtk_clist_row_move(GTK_CLIST(reader_clist), row, row - 1);
+      gtk_clist_select_row(GTK_CLIST(reader_clist), row - 1, -1);
+      if (gtk_clist_row_is_visible(GTK_CLIST(reader_clist), row - 1)
+	  != GTK_VISIBILITY_FULL)
+	gtk_clist_moveto(GTK_CLIST(reader_clist), row - 1, -1, 0.0, 0.0);
+      selected_row = row - 1;
+      list_modified = TRUE;
     }
+}
 
-  name = gtk_entry_get_text(GTK_ENTRY(oid_entry));
-  if (g_strcasecmp(oid_str, name) != 0)
+static void
+cb_clist_down(GtkWidget *widget)
+{
+  gint            row;
+
+  row = selected_row;
+  if (row >= 0 && row < GTK_CLIST(reader_clist)->rows - 1)
     {
-      if (oid_str)
-	g_free(oid_str);
-      oid_str = g_strdup(name);
-      objid_length = MAX_OID_LEN;
-      read_objid(oid_str, objid, &objid_length);
+      gtk_clist_row_move(GTK_CLIST(reader_clist), row, row + 1);
+      gtk_clist_select_row(GTK_CLIST(reader_clist), row + 1, -1);
+      if (gtk_clist_row_is_visible(GTK_CLIST(reader_clist), row + 1)
+	  != GTK_VISIBILITY_FULL)
+	gtk_clist_moveto(GTK_CLIST(reader_clist), row + 1, -1, 1.0, 0.0);
+      selected_row = row + 1;
+      list_modified = TRUE;
     }
+}
 
+static void
+cb_enter(GtkWidget *widget)
+{
+  gchar           *buf[9];
+  gint            i, n;
 
-  name = gtk_entry_get_text(GTK_ENTRY(format_entry));
-  if (g_strcasecmp(format, name) != 0)
+  i = 0;
+  buf[i++] = entry_get_alpha_text(&label_entry);
+  buf[i++] = entry_get_alpha_text(&peer_entry);
+  buf[i++] = "161"; // entry_get_alpha_text(port_entry);
+  buf[i++] = entry_get_alpha_text(&community_entry);
+  n = i;
+  buf[i++] = entry_get_alpha_text(&oid_entry);
+  buf[i++] = entry_get_alpha_text(&unit_entry);
+  buf[i++] = "100"; // entry_get_alpha_text(umount_entry);
+  buf[i++] = "no"; // GTK_TOGGLE_BUTTON(mounting_button)->active ? "yes" : "no";
+  buf[i] = NULL;
+
+  if (*(buf[0]) == '\0' || *(buf[1]) == '\0')     /* validate we have input */
+    return;
+  if ((*(buf[n]) && !*(buf[n+1])) || (!*(buf[n]) && *(buf[n+1])))
     {
-      if (format)
-	g_free(format);
-      format = g_strdup(name);
+      gkrellm_config_message_window("Entry Error",
+				    "Both mount and umount commands must be entered.", widget);
+      return;
     }
+  if (selected_row >= 0)
+    {
+      for (i = 0; i < 8; ++i)
+	gtk_clist_set_text(GTK_CLIST(reader_clist), selected_row, i, buf[i]);
+      gtk_clist_unselect_row(GTK_CLIST(reader_clist), selected_row, 0);
+      selected_row = -1;
+    }
+  else
+    gtk_clist_append(GTK_CLIST(reader_clist), buf);
+  reset_entries();
+  list_modified = TRUE;
+}
 
+static void
+cb_delete(GtkWidget *widget)
+{
+  reset_entries();
+  if (selected_row >= 0)
+    {
+      gtk_clist_remove(GTK_CLIST(reader_clist), selected_row);
+      list_modified = TRUE;
+      selected_row = -1;
+    }
 }
 
 
@@ -349,24 +566,36 @@ static gchar    *plugin_info_text =
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin 0.1\n"
+   "SNMP plugin 0.3\n"
    "GKrellM SNMP monitor Plugin\n\n"
    "Copyright (C) 2000 Christian W. Zuckschwerdt\n"
    "zany@triq.net\n\n"
-   "http://triq.net/...\n\n"
+   "http://triq.net/gkrellm/\n\n"
    "Released under the GNU Public Licence"
 ;
 
 
+static gchar *reader_title[8] =
+{ "Label", "Peer", "Port",
+  "Community", "OID", "Unit",
+  "Freq", "Active" };
+
 static void
 create_plugin_tab(GtkWidget *tab_vbox)
-        {
-        GtkWidget               *tabs;
-        GtkWidget               *vbox;
-        GtkWidget               *hbox;
-        GtkWidget               *scrolled;
-        GtkWidget               *text;
-        GtkWidget               *label;
+{
+  Reader *reader;
+
+  GtkWidget               *tabs;
+  GtkWidget               *vbox;
+  GtkWidget               *hbox;
+  GtkWidget               *button;
+  GtkWidget               *arrow;
+  GtkWidget               *scrolled;
+  GtkWidget               *text;
+  GtkWidget               *label;
+
+  gchar                   *buf[9];
+  gint                    row, i;
 
         /* Make a couple of tabs.  One for setup and one for info
         */
@@ -378,40 +607,115 @@ create_plugin_tab(GtkWidget *tab_vbox)
         vbox = create_tab(tabs, "Setup");
 
 	hbox = gtk_hbox_new(FALSE,0);
-	label = gtk_label_new("Peername : ");
-	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
-	peername_entry = gtk_entry_new();
-	gtk_entry_set_text(GTK_ENTRY(peername_entry), peername);
-	gtk_box_pack_start(GTK_BOX(hbox),peername_entry,FALSE,FALSE,0);
-	gtk_container_add(GTK_CONTAINER(vbox),hbox);
 
+	label = gtk_label_new("Label : ");
+	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
+	label_entry = gtk_entry_new();
+	gtk_entry_set_text(GTK_ENTRY(label_entry), "");
+	gtk_box_pack_start(GTK_BOX(hbox),label_entry,FALSE,FALSE,0);
+
+	label = gtk_label_new("Peer : ");
+	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
+	peer_entry = gtk_entry_new();
+	gtk_entry_set_text(GTK_ENTRY(peer_entry), "");
+	gtk_box_pack_start(GTK_BOX(hbox),peer_entry,FALSE,FALSE,0);
+
+	label = gtk_label_new("Port : ");
+	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
+	port_entry = gtk_entry_new();
+	gtk_entry_set_text(GTK_ENTRY(port_entry), "");
+	gtk_box_pack_start(GTK_BOX(hbox),port_entry,FALSE,FALSE,0);
+
+	gtk_container_add(GTK_CONTAINER(vbox),hbox);
 	hbox = gtk_hbox_new(FALSE,0);
+
 	label = gtk_label_new("Community : ");
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
 	community_entry = gtk_entry_new();
-	gtk_entry_set_text(GTK_ENTRY(community_entry), community);
+	gtk_entry_set_text(GTK_ENTRY(community_entry), "");
         gtk_box_pack_start(GTK_BOX(hbox), community_entry, FALSE, FALSE, 0);
-	gtk_container_add(GTK_CONTAINER(vbox),hbox);
 
-	hbox = gtk_hbox_new(FALSE,0);
 	label = gtk_label_new("OID : ");
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
 	oid_entry = gtk_entry_new();
-	gtk_entry_set_text(GTK_ENTRY(oid_entry), oid_str);
+	gtk_entry_set_text(GTK_ENTRY(oid_entry), "");
         gtk_box_pack_start(GTK_BOX(hbox), oid_entry, FALSE, FALSE, 0);
-	gtk_container_add(GTK_CONTAINER(vbox),hbox);
 
-
-	hbox = gtk_hbox_new(FALSE,0);
-	label = gtk_label_new("Format Text : ");
+	label = gtk_label_new("Unit : ");
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
-
-	format_entry = gtk_entry_new();
-	gtk_entry_set_text(GTK_ENTRY(format_entry), format);
-	gtk_box_pack_start(GTK_BOX(hbox),format_entry,FALSE,FALSE,0);
+	unit_entry = gtk_entry_new();
+	gtk_entry_set_text(GTK_ENTRY(unit_entry), "");
+	gtk_box_pack_start(GTK_BOX(hbox),unit_entry,FALSE,FALSE,0);
 
 	gtk_container_add(GTK_CONTAINER(vbox),hbox);
 
+
+        hbox = gtk_hbox_new(FALSE, 3);
+        gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 2);
+	/*
+        *mount_button = gtk_check_button_new_with_label(
+                                        "Enable /etc/fstab mounting");
+        gtk_box_pack_start(GTK_BOX(hbox), *mount_button, TRUE, TRUE, 0);
+        gtk_signal_connect(GTK_OBJECT(GTK_BUTTON(*mount_button)), "clicked",
+                                GTK_SIGNAL_FUNC (cb_mount_button_clicked), NULL);
+	*/
+
+        button = gtk_button_new();
+        arrow = gtk_arrow_new(GTK_ARROW_UP, GTK_SHADOW_ETCHED_OUT);
+        gtk_container_add(GTK_CONTAINER(button), arrow);
+        gtk_signal_connect(GTK_OBJECT(button), "clicked",
+			   (GtkSignalFunc) cb_clist_up, NULL);
+        gtk_box_pack_start(GTK_BOX(hbox), button, TRUE, TRUE, 4);
+
+        button = gtk_button_new();
+        arrow = gtk_arrow_new(GTK_ARROW_DOWN, GTK_SHADOW_ETCHED_OUT);
+        gtk_container_add(GTK_CONTAINER(button), arrow);
+        gtk_signal_connect(GTK_OBJECT(button), "clicked",
+			   (GtkSignalFunc) cb_clist_down, NULL);
+        gtk_box_pack_start(GTK_BOX(hbox), button, TRUE, TRUE, 4);
+
+        button = gtk_button_new_with_label("Enter");
+        gtk_signal_connect(GTK_OBJECT(button), "clicked",
+			   (GtkSignalFunc) cb_enter, NULL);
+        gtk_box_pack_start(GTK_BOX(hbox), button, TRUE, TRUE, 4);
+
+        button = gtk_button_new_with_label("Delete");
+        gtk_signal_connect(GTK_OBJECT(button), "clicked",
+			   (GtkSignalFunc) cb_delete, NULL);
+        gtk_box_pack_start(GTK_BOX(hbox), button, TRUE, TRUE, 4);
+
+
+        scrolled = gtk_scrolled_window_new(NULL, NULL);
+        gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled),
+                        GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+        gtk_box_pack_start(GTK_BOX(vbox), scrolled, TRUE, TRUE, 0);
+
+	reader_clist = gtk_clist_new_with_titles(8, reader_title);	
+        gtk_clist_set_shadow_type (GTK_CLIST(reader_clist), GTK_SHADOW_OUT);
+	gtk_clist_set_column_width (GTK_CLIST(reader_clist), 1, 100);
+	gtk_clist_set_column_width (GTK_CLIST(reader_clist), 4, 200);
+
+        gtk_signal_connect(GTK_OBJECT(reader_clist), "select_row",
+                        (GtkSignalFunc) cb_clist_selected, NULL);
+        gtk_signal_connect(GTK_OBJECT(reader_clist), "unselect_row",
+                        (GtkSignalFunc) cb_clist_unselected, NULL);
+
+        gtk_container_add(GTK_CONTAINER(scrolled), reader_clist);
+
+        for (reader = readers; reader; reader = reader->next)
+	  {
+	    i = 0;
+	    buf[i++] = reader->label;
+	    buf[i++] = reader->peer;
+	    buf[i++] = "161"; // reader->port;
+	    buf[i++] = reader->community;
+	    buf[i++] = reader->oid_str;
+	    buf[i++] = reader->unit;
+	    buf[i++] = "100"; // reader->delay;
+	    buf[i++] = reader->active ? "yes" : "no";
+	    buf[i] = NULL;
+	    row = gtk_clist_append(GTK_CLIST(reader_clist), buf);
+	  }
 
 
 /* --- Info tab */
@@ -462,16 +766,11 @@ static Monitor  plugin_mon  =
 Monitor *
 init_plugin(void)
 {
-    oid_str = g_strdup(DEFAULT_OID);
-    peername = g_strdup(DEFAULT_PEERNAME);
-    community = g_strdup(DEFAULT_COMMUNITY);
-    format = NULL;
+  readers = NULL;
 
-    init_mib();
-    objid_length = MAX_OID_LEN;
-    read_objid(oid_str, objid, &objid_length);
+  init_mib();
 
-    return &plugin_mon;
+  return &plugin_mon;
 }
 
 

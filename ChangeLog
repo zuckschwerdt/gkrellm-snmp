@@ -1,8 +1,13 @@
 GKrellM_SNMP Changelog:
 
+0.3:
+- Makefile fix for FreeBSD
+- Makefile fix concerning missing PLUGIN_DIR
+- Slider now disabled (will be optional sometime)
+- You can now have multiple SNMP monitors
+
 0.2:
 - ChangeLog, README, Makefile
-- getting close to alpha quality
 
 0.1:
 - beta testing release
