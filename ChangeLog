@@ -1,6 +1,9 @@
 
 GKrellM_SNMP Changelog:
 
+0.13 (2001-01-23)
+- Failed DNS lookups won't harm GKrellM anymore.
+
 0.12: (2001-01-22)
 - minor tweaks for GKrellM 1.0.4
 

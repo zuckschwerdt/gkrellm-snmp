@@ -53,7 +53,7 @@
 
  
 #define SNMP_PLUGIN_MAJOR_VERSION 0
-#define SNMP_PLUGIN_MINOR_VERSION 12
+#define SNMP_PLUGIN_MINOR_VERSION 13
 
 #define PLUGIN_CONFIG_KEYWORD   "snmp_monitor"
 
@@ -166,8 +166,8 @@ simpleSNMPupdate()
     }
 }
 
-struct snmp_session
-*simpleSNMPopen(gchar *peername,
+struct snmp_session *
+simpleSNMPopen(gchar *peername,
 		gint port,
 		gchar *community)
 {
@@ -197,7 +197,7 @@ struct snmp_session
     ss = snmp_open(&session);
     if (ss == NULL){
         snmp_sess_perror("snmpget", &session);
-        exit(1);
+        // exit(1);
     }
 
     return ss;
@@ -231,95 +231,104 @@ static GtkWidget *main_vbox;
 static void
 update_plugin()
 {
-  Reader *reader;
-  gchar  *text;
-  gint clock_style_id;
-  //  Krell       *k;
-  //  gint i;
+    Reader *reader;
+    gchar  *text;
+    gint clock_style_id;
+    //  Krell       *k;
+    //  gint i;
 
-  /* See if we recieved SNMP responses */
-  simpleSNMPupdate();
+    /* See if we recieved SNMP responses */
+    simpleSNMPupdate();
 
-  /* Send new SNMP requests */
-  for (reader = readers; reader ; reader = reader->next)
-  {
-      //      k = KRELL(panel);
-      //      k->previous = 0;
+    /* Send new SNMP requests */
+    for (reader = readers; reader ; reader = reader->next)
+    {
+        //      k = KRELL(panel);
+	//      k->previous = 0;
 
-      if (! reader->session)
-	  reader->session = simpleSNMPopen(reader->peer,
-					   reader->port,
-					   reader->community);
+	if ( (! reader->session) && (! reader->old_error) ) {
+	    reader->session = simpleSNMPopen(reader->peer,
+					     reader->port,
+					     reader->community);
+	    if (! reader->session)
+		reader->old_error = g_strdup_printf ("%s %s (snmp://%s@%s:%d/%s)",
+					    reader->label,
+					    "Unknown host",
+					    reader->community,
+					    reader->peer, reader->port,
+					    reader->oid_str );
+	}
 
-      /* Send new SNMP requests */
-      if ((GK.timer_ticks % reader->delay) == 0)
-	  simpleSNMPsend(reader->session,
-			 reader->objid,
-			 reader->objid_length);
+	/* Send new SNMP requests */
+	if ( (reader->session) && ((GK.timer_ticks % reader->delay) == 0))
+	    simpleSNMPsend(reader->session,
+			   reader->objid,
+			   reader->objid_length);
 
 
-      if (reader->session->callback_magic) {
-	  if (!g_strncasecmp(reader->session->callback_magic, "ERROR", 5)) {
-	      if (!reader->old_error || strcmp(reader->session->callback_magic,
-					       reader->old_error) ) {
-		  g_free(reader->old_error);
-		  reader->old_error = g_strdup(reader->session->callback_magic);
-		  reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
-		  text = g_strdup_printf ("%s %s (snmp://%s@%s:%d/%s)",
-					  reader->label,
-					  (gchar*)reader->session->callback_magic,
-					  reader->community,
-					  reader->peer, reader->port,
-					  reader->oid_str );
-		  gtk_tooltips_set_tip(reader->tooltip, reader->panel->drawing_area, text, "");
-		  gtk_tooltips_enable(reader->tooltip);
-		  g_free(text);
-	      }
-	  } else {
-	      if ( !reader->old_sample || strcmp(reader->session->callback_magic,
-						 reader->old_sample) ) {
-		  g_free(reader->old_sample);
-		  reader->old_sample = g_strdup(reader->session->callback_magic);
+	if ( (reader->session) && (reader->session->callback_magic) ) {
+	    if (!g_strncasecmp(reader->session->callback_magic, "ERROR", 5)) {
+	        if (!reader->old_error ||
+		    strcmp(reader->session->callback_magic,
+			   reader->old_error) ) {
+		    g_free(reader->old_error);
+		    reader->old_error = g_strdup(reader->session->callback_magic);
+		    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
+		    text = g_strdup_printf ("%s %s (snmp://%s@%s:%d/%s)",
+					    reader->label,
+					    (gchar*)reader->session->callback_magic,
+					    reader->community,
+					    reader->peer, reader->port,
+					    reader->oid_str );
+		    gtk_tooltips_set_tip(reader->tooltip, reader->panel->drawing_area, text, "");
+		    gtk_tooltips_enable(reader->tooltip);
+		    g_free(text);
+		}
+	    } else {
+		if ( !reader->old_sample || strcmp(reader->session->callback_magic,
+						   reader->old_sample) ) {
+		    g_free(reader->old_sample);
+		    reader->old_sample = g_strdup(reader->session->callback_magic);
 
-		  text = g_strconcat (reader->label, " ",
-				      reader->session->callback_magic,
-				      reader->unit, NULL);
-		  dup_string(&reader->panel->label->string, text);
-		  g_free(text);
-		  //	i = atoi(text);
+		    text = g_strconcat (reader->label, " ",
+					reader->session->callback_magic,
+					reader->unit, NULL);
+		    dup_string(&reader->panel->label->string, text);
+		    g_free(text);
+		    //	i = atoi(text);
 
-		  text = g_strdup_printf ("%s %s %s  (snmp://%s@%s:%d/%s)",
-					  reader->label,
-					  (gchar*)reader->session->callback_magic,
-					  reader->unit, 
-					  reader->community,
-					  reader->peer, reader->port,
-					  reader->oid_str );
-		  gtk_tooltips_set_tip(reader->tooltip, reader->panel->drawing_area, text, "");
-		  gtk_tooltips_enable(reader->tooltip);
-		  g_free(text);
-	      }
-	      reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE);
-	  }
+		    text = g_strdup_printf ("%s %s %s  (snmp://%s@%s:%d/%s)",
+					    reader->label,
+					    (gchar*)reader->session->callback_magic,
+					    reader->unit, 
+					    reader->community,
+					    reader->peer, reader->port,
+					    reader->oid_str );
+		    gtk_tooltips_set_tip(reader->tooltip, reader->panel->drawing_area, text, "");
+		    gtk_tooltips_enable(reader->tooltip);
+		    g_free(text);
+		}
+		reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE);
+	    }
 
-      } else {
-	  reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
-	  gtk_tooltips_disable(reader->tooltip);
-	  //	i = -1;
-      }
+	} else {
+	    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
+	    gtk_tooltips_disable(reader->tooltip);
+	    //	i = -1;
+	}
       
-      //      gkrellm_update_krell(panel, k, i);
+	//      gkrellm_update_krell(panel, k, i);
 
-      /* Bill mentioned this change for upcoming 0.10.0 */
+	/* Bill mentioned this change for upcoming 0.10.0 */
 #if (VERSION_MAJOR <= 0)&&(VERSION_MINOR <= 9)
-      clock_style_id = CLOCK_STYLE;
+	clock_style_id = CLOCK_STYLE;
 #else
-      clock_style_id = gkrellm_lookup_meter_style_id(CLOCK_STYLE_NAME);
+	clock_style_id = gkrellm_lookup_meter_style_id(CLOCK_STYLE_NAME);
 #endif
 
-      gkrellm_draw_panel_label( reader->panel,
-				gkrellm_bg_panel_image(clock_style_id) );
-      gkrellm_draw_layers(reader->panel);
+	gkrellm_draw_panel_label( reader->panel,
+				  gkrellm_bg_panel_image(clock_style_id) );
+	gkrellm_draw_layers(reader->panel);
     }
 
 }
@@ -753,7 +762,7 @@ static gchar    *plugin_info_text =
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin 0.12\n"
+   "SNMP plugin 0.13\n"
    "GKrellM SNMP monitor Plugin\n\n"
    "Copyright (C) 2000-2001 Christian W. Zuckschwerdt\n"
    "zany@triq.net\n\n"
