@@ -3,6 +3,10 @@ GKrellM_SNMP Changelog:
 
  - TODO: instance mapping
  - TODO: meters
+ - TODO: clean GKrellM2 / GTK2 port
+
+0.20-pre (2003-08-11)
+ - initial GKrellM2 support (req. by Kyle Davenport)
 
 0.19-pre (2002-03-13)
  - initial GKrellM chart support

@@ -1,31 +1,25 @@
 # Makefile for a GKrellM SNMP monitor plugin
 
 # Linux
-GTK_CONFIG = gtk-config
-IMLIB_CONFIG = imlib-config
+GTK_CONFIG = pkg-config gtk+-2.0
 SYSLIB = -lsnmp
 # we need lib crypto if libsnmp has privacy support.
 SYSLIB += -lcrypto -L/usr/local/ssl/lib -L/usr/ssl/lib
 
 # FreeBSD
 #GTK_CONFIG = gtk12-config
-#IMLIB_CONFIG = imlib-config
 #SYSLIB = -lsnmp
 #PLUGIN_DIR = /usr/X11R6/libexec/gkrellm/plugins/
 
 USER_PLUGIN_DIR = $(HOME)/.gkrellm/plugins
 PLUGIN_DIR = /usr/share/gkrellm/plugins
-GKRELLM_INCLUDE = -I/usr/local/include
+GKRELLM_INCLUDE = -I/usr/X11R6/include
 
 GTK_INCLUDE = `$(GTK_CONFIG) --cflags`
 GTK_LIB = `$(GTK_CONFIG) --libs`
 
-IMLIB_INCLUDE = `$(IMLIB_CONFIG) --cflags-gdk`
-IMLIB_LIB = `$(IMLIB_CONFIG) --libs-gdk`
-
-
-FLAGS = -Wall -fPIC $(GTK_INCLUDE) $(IMLIB_INCLUDE) $(GKRELLM_INCLUDE)
-LIBS = $(GTK_LIB) $(IMLIB_LIB) $(SYSLIB)
+FLAGS = -Wall -fPIC $(GTK_INCLUDE) $(GKRELLM_INCLUDE)
+LIBS = $(GTK_LIB) $(SYSLIB)
 LFLAGS = -shared
 
 CC = gcc $(CFLAGS) $(FLAGS)

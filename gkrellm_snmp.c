@@ -1,5 +1,5 @@
 /* SNMP reader plugin for GKrellM 
-|  Copyright (C) 2000-2002  Christian W. Zuckschwerdt <zany@triq.net>
+|  Copyright (C) 2000-2003  Christian W. Zuckschwerdt <zany@triq.net>
 |
 |  Author:  Christian W. Zuckschwerdt  <zany@triq.net>  http://triq.net/
 |  Latest versions might be found at:  http://gkrellm.net/
@@ -57,13 +57,15 @@
 #include <sys/time.h>
 
 
-#include <gkrellm/gkrellm.h>
+#include <gkrellm2/gkrellm.h>
+
+#include "port.h"
 
 /* #define STREAM /* test for Lou Cephyr */
 
 
 #define SNMP_PLUGIN_MAJOR_VERSION 0
-#define SNMP_PLUGIN_MINOR_VERSION 17
+#define SNMP_PLUGIN_MINOR_VERSION 20
 
 #define PLUGIN_CONFIG_NAME   "SNMP"
 #define PLUGIN_CONFIG_KEYWORD   "snmp_monitor"
@@ -725,8 +727,8 @@ update_plugin()
 #endif
 
 		if (reader->panel != NULL)
-	gkrellm_draw_panel_label( reader->panel,
-				  gkrellm_bg_panel_image(clock_style_id) );
+	gkrellm_draw_panel_label( reader->panel );
+				//GTK2 gkrellm_bg_panel_image(clock_style_id) );
 		if (reader->panel != NULL)
 	gkrellm_draw_layers(reader->panel);
     }
@@ -780,7 +782,7 @@ create_chart(GtkWidget *vbox, Reader *reader, gint first_create)
     if (first_create)
 	    reader->chart = gkrellm_chart_new0();
 
-    gkrellm_set_chart_height_default(reader->chart, 20);
+//    gkrellm_set_chart_height_default(reader->chart, 20);
 
     gkrellm_chart_create(vbox, mon, reader->chart, &reader->chart_config);
 
@@ -825,7 +827,7 @@ create_panel(GtkWidget *vbox, Reader *reader, gint first_create)
     |  the list of krells pointed to by panel->krell.
     */
     style = gkrellm_meter_style(DEFAULT_STYLE);
-    style->label_position = LABEL_CENTER;
+    //GTK2 style->label_position = LABEL_CENTER;
     //    krell_image = gkrellm_krell_meter_image(DEFAULT_STYLE);
     //    k = gkrellm_create_krell(panel, krell_image, style);
     //    k->full_scale = 30;
@@ -1296,7 +1298,7 @@ static gchar    *plugin_info_text =
 "\n"
 "(1)\n"
 "The ambiente temperature sensor for Oldenburg i.O., Germany\n"
-" (see http://www.PMNET.uni-oldenburg.de/temperatur.php3)\n"
+" (see http://www.PMNET.uni-oldenburg.de/temperatur.php)\n"
 "is world readable using the following community/server, oid\n"
 "public / 134.106.172.2 port 161 oid .1.3.6.1.4.1.2021.8.1.101.1\n"
 "\n"
@@ -1306,7 +1308,7 @@ static gchar    *plugin_info_text =
 " SNMP community name 'public'\n"
 " SNMP oid '.1.3.6.1.4.1.2021.8.1.101.1'\n"
 "\n"
-"Resonable Label/Unit would be 'Temp.' / 'Å∞C'\n"
+"Resonable Label/Unit would be 'Temp.' / '¬∞C'\n"
 "\n"
 "(2)\n"
 "\n"
@@ -1326,9 +1328,9 @@ static gchar    *plugin_info_text =
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin 0.17\n"
+   "SNMP plugin 0.20\n"
    "GKrellM SNMP monitor Plugin\n\n"
-   "Copyright (C) 2000-2002 Christian W. Zuckschwerdt <zany@triq.net>\n"
+   "Copyright (C) 2000-2003 Christian W. Zuckschwerdt <zany@triq.net>\n"
    "\n"
    "http://triq.net/gkrellm.html\n\n"
    "Released under the GNU Public Licence"
@@ -1363,7 +1365,8 @@ create_plugin_tab(GtkWidget *tab_vbox)
         gtk_box_pack_start(GTK_BOX(tab_vbox), tabs, TRUE, TRUE, 0);
 
 /* --- Setup tab */
-        vbox = gkrellm_create_tab(tabs, "Setup");
+//	vbox = gkrellm_create_tab(tabs, "Setup");
+	vbox = gkrellm_gtk_framed_notebook_page(tabs, "Setup");
 
 	hbox = gtk_hbox_new(FALSE,0);
 
@@ -1505,15 +1508,18 @@ create_plugin_tab(GtkWidget *tab_vbox)
 
 
 /* --- Info tab */
-        vbox = gkrellm_create_tab(tabs, "Info");
-        scrolled = gtk_scrolled_window_new(NULL, NULL);
-        gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled),
-                        GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-        gtk_box_pack_start(GTK_BOX(vbox), scrolled, TRUE, TRUE, 0);
-        text = gtk_text_new(NULL, NULL);
-        gtk_text_insert(GTK_TEXT(text), NULL, NULL, NULL, plugin_info_text, -1);
-        gtk_text_set_editable(GTK_TEXT(text), FALSE);
-        gtk_container_add(GTK_CONTAINER(scrolled), text);
+//	vbox = gkrellm_create_tab(tabs, "Info");
+	vbox = gkrellm_gtk_framed_notebook_page(tabs, "Info");
+//        scrolled = gtk_scrolled_window_new(NULL, NULL);
+//        gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled),
+//                        GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+//        gtk_box_pack_start(GTK_BOX(vbox), scrolled, TRUE, TRUE, 0);
+//        text = gtk_text_new(NULL, NULL);
+	text = gkrellm_gtk_scrolled_text_view(vbox, NULL, GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+//        gtk_text_insert(GTK_TEXT(text), NULL, NULL, NULL, plugin_info_text, -1);
+	gkrellm_gtk_text_view_append(text, plugin_info_text);
+//        gtk_text_set_editable(GTK_TEXT(text), FALSE);
+//        gtk_container_add(GTK_CONTAINER(scrolled), text);
 
 /* --- about text */
 
