@@ -34,13 +34,13 @@
 #include <sys/types.h>
 
 #ifdef NETSNMP
-#include <ucd-snmp/asn1.h>
-#include <ucd-snmp/mib.h>
-#include <ucd-snmp/parse.h>
-#include <ucd-snmp/snmp.h>
-#include <ucd-snmp/snmp_api.h>
-#include <ucd-snmp/snmp_client.h>
-#include <ucd-snmp/snmp_impl.h> /* special ASN types */
+#include <net-snmp/net-snmp-config.h>
+#include <net-snmp/net-snmp-includes.h>
+#define RECEIVED_MESSAGE NETSNMP_CALLBACK_OP_RECEIVED_MESSAGE
+#define TIMED_OUT NETSNMP_CALLBACK_OP_TIMED_OUT
+#ifdef DEBUG_SNMP
+#include <net-snmp/snmp_debug.h>
+#endif /* DEBUG_SNMP */
 #else /* UCD-SNMP */
 #include <ucd-snmp/asn1.h>
 #include <ucd-snmp/mib.h>
@@ -49,23 +49,21 @@
 #include <ucd-snmp/snmp_api.h>
 #include <ucd-snmp/snmp_client.h>
 #include <ucd-snmp/snmp_impl.h> /* special ASN types */
-#endif
 #ifdef DEBUG_SNMP
 #include <ucd-snmp/snmp_debug.h>
 #endif /* DEBUG_SNMP */
+#endif /* UCD-SNMP */
 
 #include <sys/time.h>
 
 
 #include <gkrellm2/gkrellm.h>
 
-#include "port.h"
-
 /* #define STREAM /* test for Lou Cephyr */
 
 
 #define SNMP_PLUGIN_MAJOR_VERSION 0
-#define SNMP_PLUGIN_MINOR_VERSION 20
+#define SNMP_PLUGIN_MINOR_VERSION 21
 
 #define PLUGIN_CONFIG_NAME   "SNMP"
 #define PLUGIN_CONFIG_KEYWORD   "snmp_monitor"
@@ -99,12 +97,12 @@ struct Reader {
 	gchar			*old_error;
 	struct snmp_session	*session;
 
-	Panel			*panel;
+	GkrellmPanel			*panel;
 	GtkTooltips             *tooltip;
 
-	Chart			*chart;
-	ChartData		*chart_data;
-	ChartConfig		*chart_config;
+	GkrellmChart			*chart;
+	GkrellmChartdata		*chart_data;
+	GkrellmChartconfig		*chart_config;
 };
 
 
@@ -115,7 +113,7 @@ struct Reader {
 gchar *
 scale(u_long num)
 {
-    if (num > 6000000000)
+    if (num > 2000000000)
 	return g_strdup_printf("%ldG", num/1024/1024/1024);
     if (num > 6000000)
 	return g_strdup_printf("%ldM", num/1024/1024);
@@ -204,15 +202,16 @@ render_info(Reader *reader)
     up_m = (reader->sample_time/100/60) % 60;
 
     delta = (reader->sample_n - reader->old_sample_n) /
-	    ( (since_last < 1) ? 1 : since_last ) /
-	    ( (reader->divisor == 0) ? 1 : reader->divisor );
+	    ( (since_last < 1) ? 1 : since_last );
 
-    return g_strdup_printf ("%s '%s' %ld (%ld s: %ld) %s  (snmp://%s@%s:%d/%s) Uptime: %dd %d:%d",
+    return g_strdup_printf ("%s '%s' %ld (%ld s: %ld /%d =%ld) %s  (snmp://%s@%s:%d/%s) Uptime: %dd %d:%d",
 			    reader->label,
 			    reader->sample,
 			    reader->sample_n,
 			    since_last,
 			    delta,
+			    reader->divisor, 
+			    delta / ( (reader->divisor == 0) ? 1 : reader->divisor ), 
 			    reader->unit, 
 			    reader->community,
 			    reader->peer, reader->port,
@@ -322,7 +321,7 @@ snmp_probe(gchar *peer, gint port, gchar *community)
     ss = snmp_open(&session);
     if (ss == NULL){
       fprintf (stderr, "local port set to: %d\n", session.local_port);
-      snmp_sess_perror(__FUNCTION__ "() snmp_open", &session);
+      snmp_sess_perror("snmp_open", &session);
       exit(1);
     }
 
@@ -350,7 +349,8 @@ retry:
       if (response->errstat == SNMP_ERR_NOERROR){
         /* just render all vars */
         for(vars = response->variables; vars; vars = vars->next_variable) {
-	    sprint_variable(textbuf, vars->name, vars->name_length, vars);
+	    snprint_variable(textbuf, 1023, vars->name, vars->name_length, vars);
+	    textbuf[1023] = '\0';
 	    if (result) {
 	        tmp = result;
 		result = g_strdup_printf("%s\n%s\n", tmp, textbuf);
@@ -390,7 +390,7 @@ retry:
 
     } else {    /* status == STAT_ERROR */
       fprintf (stderr, "local port set to: %d\n", session.local_port);
-      snmp_sess_perror(__FUNCTION__ "() STAT_ERROR", ss);
+      snmp_sess_perror("STAT_ERROR", ss);
       snmp_close(ss);
       return NULL;
 
@@ -566,7 +566,7 @@ simpleSNMPopen(gchar *peername,
      */
     ss = snmp_open(&session);
     if (ss == NULL){
-        snmp_sess_perror(__FUNCTION__ "() snmp_open", &session);
+        snmp_sess_perror("snmp_open", &session);
         // exit(1);
     }
 
@@ -609,7 +609,7 @@ simpleSNMPsend(struct snmp_session *session,
 
 /* GKrellM interface */
  
-static Monitor *mon;
+static GkrellmMonitor *mon;
 static Reader *readers;
 static GtkWidget *main_vbox;
 
@@ -618,8 +618,9 @@ update_plugin()
 {
     Reader *reader;
     gchar  *text;
+    u_long val, since_last;
     gint clock_style_id;
-    //  Krell       *k;
+    //  GkrellmKrell       *k;
     //  gint i;
 
     /* See if we recieved SNMP responses */
@@ -658,7 +659,7 @@ update_plugin()
 		    text = reader->old_error;
 		    reader->old_error = g_strdup(reader->error);
 		    g_free(text);
-		    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
+		    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE_ID);
 		    text = render_error(reader);
 		    gtk_tooltips_set_tip(reader->tooltip, reader->panel->drawing_area, text, "");
 		    gtk_tooltips_enable(reader->tooltip);
@@ -668,20 +669,39 @@ update_plugin()
 		    if ((GK.timer_ticks % reader->delay) == 0)
 			    if (reader->chart != NULL)
 			    {
-				    gkrellm_store_chartdata(reader->chart, 0, reader->sample_n);
+    /* 100: turn TimeTicks into seconds */
+    since_last = (reader->sample_time - reader->old_sample_time) / 100;
+    
+    if (reader->delta)
+	val = (reader->sample_n - reader->old_sample_n) /
+		( (since_last < 1) ? 1 : since_last ) /
+		( (reader->divisor == 0) ? 1 : reader->divisor );
+    else
+	val = reader->sample_n / 
+		( (reader->divisor == 0) ? 1 : reader->divisor );
+		
+				    gkrellm_store_chartdata(reader->chart, 0, val);
 				    text = render_label(reader);
 				    gkrellm_draw_chartdata(reader->chart);
 				    gkrellm_draw_chart_text(reader->chart,
-							    DEFAULT_STYLE,
+							    DEFAULT_STYLE_ID,
 							    text);
 				    gkrellm_draw_chart_to_screen(reader->chart);
 				    g_free(text);
+
+				    text = render_info(reader);
+				    gtk_tooltips_set_tip(reader->tooltip, reader->chart->drawing_area, text, "");
+				    gtk_tooltips_enable(reader->tooltip);
+				    g_free(text);
+
+		    		    reader->old_sample_n = reader->sample_n;
+				    reader->old_sample_time = reader->sample_time;
 			    }
 
 		    /* if there are changes update label */
 		if (reader->panel != NULL)
 		{
-			reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE);
+			reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE_ID);
 		if ( !reader->old_sample || strcmp(reader->sample,
 						   reader->old_sample) ||
 		     (reader->sample_n != reader->old_sample_n) ) {
@@ -705,13 +725,9 @@ update_plugin()
 		}
 	    }
 
-	    /* back up the old sample */
-	    reader->old_sample_n = reader->sample_n;
-	    reader->old_sample_time = reader->sample_time;
-
 	} else {
 		if (reader->panel != NULL)
-	    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
+	    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE_ID);
 		if (reader->panel != NULL)
 	    gtk_tooltips_disable(reader->tooltip);
 	    //	i = -1;
@@ -719,18 +735,13 @@ update_plugin()
       
 	//      gkrellm_update_krell(panel, k, i);
 
-	/* Bill mentioned this change for upcoming 0.10.0 */
-#if (VERSION_MAJOR <= 0)&&(VERSION_MINOR <= 9)
-	clock_style_id = CLOCK_STYLE;
-#else
 	clock_style_id = gkrellm_lookup_meter_style_id(CLOCK_STYLE_NAME);
-#endif
 
 		if (reader->panel != NULL)
 	gkrellm_draw_panel_label( reader->panel );
-				//GTK2 gkrellm_bg_panel_image(clock_style_id) );
+				//GTK2 gkrellm_bg_panel_piximage(clock_style_id) );
 		if (reader->panel != NULL)
-	gkrellm_draw_layers(reader->panel);
+	gkrellm_draw_panel_layers(reader->panel);
     }
 
 }
@@ -801,6 +812,7 @@ create_chart(GtkWidget *vbox, Reader *reader, gint first_create)
 			       "expose_event", (GtkSignalFunc) chart_expose_event, NULL);
 	    gtk_signal_connect(GTK_OBJECT(reader->chart->drawing_area),
 			       "button_press_event", (GtkSignalFunc) cb_chart_click, reader->chart);
+	    reader->tooltip=gtk_tooltips_new();
     }
     else
     {
@@ -813,9 +825,9 @@ create_chart(GtkWidget *vbox, Reader *reader, gint first_create)
 static void
 create_panel(GtkWidget *vbox, Reader *reader, gint first_create)
 {
-      //    Krell           *k;
-    Style           *style;
-    //    GdkImlibImage   *krell_image;
+      //    GkrellmKrell           *k;
+    GkrellmStyle           *style;
+    //    GkrellmPiximage   *krell_piximage;
     gchar *text;
 
     if (first_create)
@@ -826,26 +838,25 @@ create_panel(GtkWidget *vbox, Reader *reader, gint first_create)
     /* Create a krell.  A Krell structure is allocated and linked into
     |  the list of krells pointed to by panel->krell.
     */
-    style = gkrellm_meter_style(DEFAULT_STYLE);
+    style = gkrellm_meter_style(DEFAULT_STYLE_ID);
     //GTK2 style->label_position = LABEL_CENTER;
-    //    krell_image = gkrellm_krell_meter_image(DEFAULT_STYLE);
-    //    k = gkrellm_create_krell(panel, krell_image, style);
+    //    krell_piximage = gkrellm_krell_meter_piximage(DEFAULT_STYLE_ID);
+    //    k = gkrellm_create_krell(panel, krell_piximage, style);
     //    k->full_scale = 30;
 
     /* Configure panel calculates the panel height needed for the "Plugin" label.
     |  and the krell.
     */
-    reader->panel->textstyle = gkrellm_meter_textstyle(DEFAULT_STYLE);
-    gkrellm_configure_panel(reader->panel, "SNMP", style);
-    //    gkrellm_configure_panel(reader->panel, "SNMP", style);
+    reader->panel->textstyle = gkrellm_meter_textstyle(DEFAULT_STYLE_ID);
+    gkrellm_panel_configure(reader->panel, "SNMP", style);
 
-    //    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
+    //    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE_ID);
 
 
     /* Build the configured panel with a background image and pack it into
     |  the vbox assigned to this monitor.
     */
-//dep:    gkrellm_create_panel(vbox, reader->panel, gkrellm_bg_meter_image(DEFAULT_STYLE));
+//dep:    gkrellm_create_panel(vbox, reader->panel, gkrellm_bg_meter_piximage(DEFAULT_STYLE_ID));
     gkrellm_panel_create(vbox, mon, reader->panel);
     gkrellm_monitor_height_adjust(reader->panel->h);
 
@@ -1214,14 +1225,14 @@ cb_enter(GtkWidget *widget)
   gint            i;
 
   i = 0;
-  buf[i++] = gkrellm_entry_get_text(&label_entry);
-  buf[i++] = gkrellm_entry_get_text(&peer_entry);
-  buf[i++] = gkrellm_entry_get_text(&port_spin);
-  buf[i++] = gkrellm_entry_get_text(&community_entry);
-  buf[i++] = gkrellm_entry_get_text(&oid_entry);
-  buf[i++] = gkrellm_entry_get_text(&unit_entry);
-  buf[i++] = gkrellm_entry_get_text(&freq_spin);
-  buf[i++] = gkrellm_entry_get_text(&div_spin);
+  buf[i++] = gkrellm_gtk_entry_get_text(&label_entry);
+  buf[i++] = gkrellm_gtk_entry_get_text(&peer_entry);
+  buf[i++] = gkrellm_gtk_entry_get_text(&port_spin);
+  buf[i++] = gkrellm_gtk_entry_get_text(&community_entry);
+  buf[i++] = gkrellm_gtk_entry_get_text(&oid_entry);
+  buf[i++] = gkrellm_gtk_entry_get_text(&unit_entry);
+  buf[i++] = gkrellm_gtk_entry_get_text(&freq_spin);
+  buf[i++] = gkrellm_gtk_entry_get_text(&div_spin);
   buf[i++] = GTK_TOGGLE_BUTTON(delta_button)->active ? "yes" : "no";
   buf[i++] = GTK_TOGGLE_BUTTON(scale_button)->active ? "yes" : "no";
   buf[i++] = "yes"; // GTK_TOGGLE_BUTTON(active_button)->active ? "yes" : "no";
@@ -1229,8 +1240,8 @@ cb_enter(GtkWidget *widget)
   /* validate we have input */
   if (!*(buf[1]) || !*(buf[2]) || !*(buf[3]) || !*(buf[4]))
     {
-      gkrellm_config_message_window("Entry Error",
-				    "Peer, Port, Community and OID must be entered.", widget);
+      gkrellm_config_message_dialog("Entry Error",
+				    "Peer, Port, Community and OID must be entered.");
       return;
     }
   if (selected_row >= 0)
@@ -1266,19 +1277,19 @@ cb_probe(GtkWidget *widget)
 	gchar *community;
 	gchar *probe;
 
-	peer = gkrellm_entry_get_text(&peer_entry);
-	port = atoi(gkrellm_entry_get_text(&port_spin));
-	community = gkrellm_entry_get_text(&community_entry);
+	peer = gkrellm_gtk_entry_get_text(&peer_entry);
+	port = atoi(gkrellm_gtk_entry_get_text(&port_spin));
+	community = gkrellm_gtk_entry_get_text(&community_entry);
 
 	/* validate we have input */
 	if (!*(peer) || !*(community))
 	{
-		gkrellm_config_message_window("Entry Error",
-			"Peer, Port and Community must be entered.", widget);
+		gkrellm_config_message_dialog("Entry Error",
+			"Peer, Port and Community must be entered.");
 		return;
 	}
 	probe = snmp_probe(peer, port, community);
-	gkrellm_config_message_window("SNMP Probe", probe, widget);
+	gkrellm_config_message_dialog("SNMP Probe", probe);
 	g_free(probe);
 }
 
@@ -1365,7 +1376,6 @@ create_plugin_tab(GtkWidget *tab_vbox)
         gtk_box_pack_start(GTK_BOX(tab_vbox), tabs, TRUE, TRUE, 0);
 
 /* --- Setup tab */
-//	vbox = gkrellm_create_tab(tabs, "Setup");
 	vbox = gkrellm_gtk_framed_notebook_page(tabs, "Setup");
 
 	hbox = gtk_hbox_new(FALSE,0);
@@ -1508,7 +1518,6 @@ create_plugin_tab(GtkWidget *tab_vbox)
 
 
 /* --- Info tab */
-//	vbox = gkrellm_create_tab(tabs, "Info");
 	vbox = gkrellm_gtk_framed_notebook_page(tabs, "Info");
 //        scrolled = gtk_scrolled_window_new(NULL, NULL);
 //        gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled),
@@ -1533,7 +1542,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
 
 
 
-static Monitor  plugin_mon  =
+static GkrellmMonitor  plugin_mon  =
         {
         PLUGIN_CONFIG_NAME,    /* Name, for config tab.        */
         0,                     /* Id,  0 if a plugin           */
@@ -1555,8 +1564,8 @@ static Monitor  plugin_mon  =
         NULL                   /* path if a plugin, filled in by GKrellM   */
         };
 
-Monitor *
-init_plugin(void)
+GkrellmMonitor *
+gkrellm_init_plugin(void)
 {
     readers = NULL;
 

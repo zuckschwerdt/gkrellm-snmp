@@ -11,8 +11,8 @@ SYSLIB += -lcrypto -L/usr/local/ssl/lib -L/usr/ssl/lib
 #SYSLIB = -lsnmp
 #PLUGIN_DIR = /usr/X11R6/libexec/gkrellm/plugins/
 
-USER_PLUGIN_DIR = $(HOME)/.gkrellm/plugins
-PLUGIN_DIR = /usr/share/gkrellm/plugins
+USER_PLUGIN_DIR = $(HOME)/.gkrellm2/plugins
+PLUGIN_DIR = /usr/lib/gkrellm2/plugins
 GKRELLM_INCLUDE = -I/usr/X11R6/include
 
 GTK_INCLUDE = `$(GTK_CONFIG) --cflags`
@@ -33,6 +33,9 @@ all:	gkrellm_snmp.so
 
 freebsd:
 	make GTK_CONFIG=gtk12-config SYSLIB=-lsnmp PLUGIN_DIR=/usr/X11R6/libexec/gkrellm/plugins
+
+netsnmp:
+	make CFLAGS="-DNETSNMP"
 
 gkrellm_snmp.so:	$(OBJS)
 	$(CC) $(OBJS) -o gkrellm_snmp.so $(LFLAGS) $(LIBS)

@@ -4,15 +4,15 @@ TODO / WISHLIST:
 
 Do you want/need
  monitor multiple oid's on the same server? (snmp bulk get)
- charts instead of krells?
+ choose between charts and krells?
  SNMP v1, v2, v3 support?
  SNMP privacy options?
 
  Enter peer, port, community and oid in separate fields
  or as snmp://community@peer:port/oid ?
 
- other SNMP lib instead of UCD-SNMPD ?
- GKrellM pre 0.9.8 support/compatibility?
+ other SNMP lib instead of UCD-SNMPD / better NETSNMP support?
+ GKrellM 1.x / 0.x support/compatibility?
 
  instance mapping?
 

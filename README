@@ -15,6 +15,9 @@ Tested with UCD-SNMP >= 4.1 ( http://ucd-snmp.ucdavis.edu/ ).
 (If you want to try -old- CMU-SNMP or UCD-SNMP <= 4.0, please be so kind
  and mail some feedback).
 
+The UCD-SNMP project is know as NETSNMP now. If you have NETSNMP installed
+please try "make netsnmp" and let me know if it works.
+
 This means for e.g. Redhat (7.1) you need to install ucd-smp as well as
 ucd-snmp-devel!
 
@@ -23,28 +26,30 @@ Compiling:
 
 * For linux: just run the normal 'make'.
 * For freebsd: run 'make freebsd'.
+* To use NETSNMP run 'make netsnmp'.
 
 
 Installing:
 ===========
 Running 'make install-user' will place the plugin in your current home
-directory under ~/.gkrellm/plugins.
+directory under ~/.gkrellm2/plugins.
 Running 'make install' as superuser will place the plugin under
-/usr/share/gkrellm/plugins. You can also manually place the resulting
-gkrellm_snmp.so under ~/.gkrellm/plugins. After restarting gkrellm, you
+/usr/lib/gkrellm2/plugins. You can also manually place the resulting
+gkrellm_snmp.so under ~/.gkrellm2/plugins. After restarting gkrellm, you
 should be able to enable it in the gkrellm plugins configuration menu.
 
 
 Troubleshooting:
 ================
-If you have trouble compiling the plugin. Make sure you have gtk 1.2 and 
-gkrellm >= 0.9.8 and you've installed the gkrellm header files in
+If you have trouble compiling the plugin. Make sure you have gtk 2 and 
+gkrellm >= 2.0.0 and you've installed the gkrellm header files in
 /usr/include/gkrellm or /usr/local/include/gkrellm. If you have placed the
 header files in some other dir, edit GKRELLM_INCLUDE in the Makefile
 
  
 Bugs:
 =====
+No GKrellm 1.x support anymore. Anyone needing that?
 I do consider this version stable.
 please mail any problems/bugs to me...
 
@@ -145,15 +150,15 @@ Call for features!
 
 Do you want/need
  monitor multiple oid's on the same server? (snmp bulk get)
- charts instead of krells?
+ choose between charts and krells?
  SNMP v1, v2, v3 support?
  SNMP privacy options?
 
  Enter peer, port, community and oid in separate fields
  or as snmp://community@peer:port/oid ?
 
- other SNMP lib instead of UCD-SNMPD ?
- GKrellM pre 0.9.8 support/compatibility?
+ other SNMP lib instead of UCD-SNMPD / better NETNMP support?
+ GKrellM pre 1.x or 0.x support/compatibility?
 
  instance mapping?
 
@@ -172,6 +177,7 @@ Tested on:
 FreeBSD  4.0 Release   w/ ucd-snmp-4.0.1   libcrypt not needed
 SuSE Linux 6.4   w/ ucd-snmp-4.0.1
 SuSE Linux 6.4   w/ ucd-snmp-4.1.1
+SuSE Linux 8.2   w/ ucd-snmp-4.2.6
 RedHad Linux 6.1
 
 
