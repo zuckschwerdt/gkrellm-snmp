@@ -36,11 +36,14 @@
 #include <ucd-snmp/snmp_api.h>
 #include <ucd-snmp/snmp_client.h>
 
+#include <sys/time.h>
+
+
 #include <gkrellm/gkrellm.h>
 
  
 #define VOLUME_MAJOR_VERSION 0
-#define VOLUME_MINOR_VERSION 5
+#define VOLUME_MINOR_VERSION 6
 
 #define PLUGIN_CONFIG_KEYWORD   "snmp_monitor"
 
@@ -60,22 +63,93 @@ struct Reader {
   gint             delay;
   gboolean        active;
   char       *old_sample;
+  char     *fresh_sample;
+  struct snmp_session *session;
   Panel           *panel;
 } ;
 
 
-char *simpleSNMPget(char *peername, char *community,
-		    oid *name, size_t name_length)
+int snmp_input(int op,
+               struct snmp_session *session,
+               int reqid,
+               struct snmp_pdu *pdu,
+               void *magic)
 {
-    struct snmp_session session, *ss;
-    struct snmp_pdu *pdu, *response;
     struct variable_list *vars;
-
-    int count;
-    int status;
-
     char *result = NULL;
 
+    if (op == RECEIVED_MESSAGE) {
+
+      if (pdu->errstat == SNMP_ERR_NOERROR) {
+        for(vars = pdu->variables; vars; vars = vars->next_variable) {
+          if (vars->type == ASN_OCTET_STR) /* value is a string */
+            result = g_strndup(vars->val.string, vars->val_len);
+          if (vars->type == ASN_INTEGER) /* value is a integer */
+            result = g_strdup_printf("%ld", *vars->val.integer);
+        }
+                              
+      } else {
+        fprintf(stderr, "Error in packet\nReason: %s\n",
+                snmp_errstring(pdu->errstat));
+
+        if (pdu->errstat == SNMP_ERR_NOSUCHNAME){
+          fprintf(stderr, "This name doesn't exist: ");
+        }
+      }
+
+      dup_string(session->callback_magic, result);
+      g_free(result);
+
+// besser ?
+      /*
+      if (session->callback_magic)
+	g_free(session->callback_magic);
+      session->callback_magic = result;
+      */
+
+    } else if (op == TIMED_OUT){
+        fprintf(stderr, "Timeout: This shouldn't happen!\n");
+    }
+    return 1;
+}
+
+void simpleSNMPupdate()
+{
+    int count;
+    int numfds, block;
+    fd_set fdset;
+    struct timeval timeout, *tvp;
+
+    numfds = 0;
+    FD_ZERO(&fdset);
+    block = 0;
+    tvp = &timeout;
+    timerclear(tvp);
+    tvp->tv_sec = 0;
+    snmp_select_info(&numfds, &fdset, tvp, &block);
+	/*        if (block == 1)
+		  tvp = NULL; */ /* block without timeout */
+    count = select(numfds, &fdset, 0, 0, tvp);
+    // gettimeofday(&Now, 0);
+    if (count > 0){
+        snmp_read(&fdset);
+    } else switch(count){
+        case 0:
+            snmp_timeout();
+	    break;
+        case -1:
+	    fprintf(stderr, "snmp error on select\n");
+	    break;
+        default:
+            fprintf(stderr, "select returned %d\n", count);
+    }
+}
+
+struct snmp_session
+*simpleSNMPopen(char *peername, char *community,
+		     char **destination)
+{
+    struct snmp_session session, *ss;
 
     /* initialize session to default values */
     snmp_sess_init( &session );
@@ -84,6 +158,14 @@ char *simpleSNMPget(char *peername, char *community,
     session.community = community;
     session.community_len = strlen(community);
     session.peername = peername;
+
+    session.retries = SNMP_DEFAULT_RETRIES;
+    session.timeout = SNMP_DEFAULT_TIMEOUT;
+
+    session.callback = snmp_input;
+    session.callback_magic = destination;
+    session.authenticator = NULL;
+
 
     /* 
      * Open an SNMP session.
@@ -94,6 +176,14 @@ char *simpleSNMPget(char *peername, char *community,
       exit(1);
     }
 
+    return ss;
+}
+
+void simpleSNMPsend(struct snmp_session *session,
+		   oid *name, size_t name_length)
+{
+    struct snmp_pdu *pdu;
+
     /* 
      * Create PDU for GET request and add object names to request.
      */
@@ -101,66 +191,11 @@ char *simpleSNMPget(char *peername, char *community,
 
     snmp_add_null_var(pdu, name, name_length);
 
-
     /* 
      * Perform the request.
-     *
-     * If the Get Request fails, note the OID that caused the error,
-     * "fix" the PDU (removing the error-prone OID) and retry.
      */
-retry:
-    status = snmp_synch_response(ss, pdu, &response);
-    if (status == STAT_SUCCESS){
-      if (response->errstat == SNMP_ERR_NOERROR){
-        for(vars = response->variables; vars; vars = vars->next_variable) {
-          if (vars->type == ASN_OCTET_STR) /* value is a string */
-	    result = g_strndup(vars->val.string, vars->val_len);
-          if (vars->type == ASN_INTEGER) /* value is a integer */
-            result = g_strdup_printf("%ld", *vars->val.integer);
-        }
-                              
-      } else {
-        fprintf(stderr, "Error in packet\nReason: %s\n",
-                snmp_errstring(response->errstat));
 
-        if (response->errstat == SNMP_ERR_NOSUCHNAME){
-          fprintf(stderr, "This name doesn't exist: ");
-          for(count = 1, vars = response->variables; 
-                vars && count != response->errindex;
-                vars = vars->next_variable, count++)
-            /*EMPTY*/ ;
-          if (vars)
-            fprint_objid(stderr, vars->name, vars->name_length);
-          fprintf(stderr, "\n");
-        }
-
-        /* retry if the errored variable was successfully removed */
-        pdu = snmp_fix_pdu(response, SNMP_MSG_GET);
-        snmp_free_pdu(response);
-        response = NULL;
-        if (pdu != NULL)
-          goto retry;
-
-      }  /* endif -- SNMP_ERR_NOERROR */
-
-    } else if (status == STAT_TIMEOUT){
-        fprintf(stderr,"Timeout: No Response from %s.\n", session.peername);
-        snmp_close(ss);
-        return NULL;
-
-    } else {    /* status == STAT_ERROR */
-      snmp_sess_perror("snmpget", ss);
-      snmp_close(ss);
-      return NULL;
-
-    }  /* endif -- STAT_SUCCESS */
-
-
-    if (response)
-      snmp_free_pdu(response);
-    snmp_close(ss);
-
-    return result;
+    snmp_send(session, pdu);
 }
  
 
@@ -172,29 +207,41 @@ update_plugin()
 {
   Reader *reader;
   //  Krell       *k;
-  gchar *p;
-  gint i;
+  //  gint i;
 
-  if ((GK.timer_ticks % 100) == 0)
-    for (reader = readers; reader ; reader = reader->next)
-    {
+  /* See if we recieved SNMP responses */
+  simpleSNMPupdate();
+
+  /* Send new SNMP requests */
+  for (reader = readers; reader ; reader = reader->next)
+  {
       //      k = KRELL(panel);
       //      k->previous = 0;
 
-      p = simpleSNMPget(reader->peer,
-			reader->community,
-			reader->objid,
-			reader->objid_length);
+      if (! reader->session)
+	  reader->session = simpleSNMPopen(reader->peer,
+		    reader->community,
+		    &reader->fresh_sample);
 
-      if (p) {
+
+      /* Send new SNMP requests */
+      if ((GK.timer_ticks % 100) == 0)
+	  simpleSNMPsend(reader->session,
+			 reader->objid,
+			 reader->objid_length);
+
+
+      if (strcmp(reader->fresh_sample, reader->old_sample) != 0)
+      {
 	g_free(reader->old_sample);
-	reader->old_sample = g_strconcat (reader->label, p, reader->unit, NULL);
+	reader->old_sample = g_strconcat (reader->label,
+					  reader->fresh_sample,
+					  reader->unit, NULL);
 	reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE);
-	i = atoi(p);
-	g_free(p);
+	//	i = atoi(p);
       } else {
 	reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
-	i = -1;
+	//	i = -1;
       }
       
       //      gkrellm_update_krell(panel, k, i);
@@ -275,6 +322,11 @@ destroy_reader(Reader *reader)
   g_free(reader->community);
   g_free(reader->oid_str);
   g_free(reader->unit);
+
+  if (reader->session)
+    snmp_close(reader->session);
+  g_free(reader->session);
+
   GK.monitor_height -= reader->panel->h;
   gkrellm_destroy_panel(reader->panel);
   //  gtk_widget_destroy(reader->vbox);
@@ -339,6 +391,9 @@ load_plugin_config(gchar *arg)
 	dup_string(&reader->community, bufc);
 	dup_string(&reader->peer, bufp);
 	dup_string(&reader->oid_str, bufo);
+	reader->old_sample = g_strdup("empty");
+	reader->fresh_sample = g_strdup("empty");
+	reader->session = NULL;
 
 	reader->objid_length = MAX_OID_LEN;
 //	get_module_node(oid_str, "ANY", objid, &objid_length);
@@ -559,7 +614,7 @@ static gchar    *plugin_info_text =
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin 0.5\n"
+   "SNMP plugin 0.6\n"
    "GKrellM SNMP monitor Plugin\n\n"
    "Copyright (C) 2000 Christian W. Zuckschwerdt\n"
    "zany@triq.net\n\n"

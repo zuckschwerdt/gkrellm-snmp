@@ -1,9 +1,13 @@
 GKrellM_SNMP Changelog:
 
-0.5
+0.6:
+- fixed some string allocation error (uninitialized)
+- finaly made SNMP request asynchronos!
+
+0.5:
 - different panel styles for active/errored monitors
 
-0.4
+0.4:
 - Fixed the Segfault - that was way to easy...
 
 0.3:
