@@ -200,7 +200,7 @@ update_plugin()
 			reader->objid_length);
 
       if (p) {
-	text = g_strconcat (reader->label, p, reader->unit);
+	text = g_strconcat (reader->label, p, reader->unit, NULL);
 	i = atoi(p);
 	g_free(p);
       } else {

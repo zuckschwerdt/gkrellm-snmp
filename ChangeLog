@@ -1,5 +1,8 @@
 GKrellM_SNMP Changelog:
 
+0.4
+- Fixed the Segfault - that was way to easy...
+
 0.3:
 - Makefile fix for FreeBSD
 - Makefile fix concerning missing PLUGIN_DIR
