@@ -33,14 +33,23 @@
 #include <stdio.h>
 #include <sys/types.h>
 
+#ifdef NETSNMP
 #include <ucd-snmp/asn1.h>
 #include <ucd-snmp/mib.h>
 #include <ucd-snmp/parse.h>
-
 #include <ucd-snmp/snmp.h>
 #include <ucd-snmp/snmp_api.h>
 #include <ucd-snmp/snmp_client.h>
 #include <ucd-snmp/snmp_impl.h> /* special ASN types */
+#else /* UCD-SNMP */
+#include <ucd-snmp/asn1.h>
+#include <ucd-snmp/mib.h>
+#include <ucd-snmp/parse.h>
+#include <ucd-snmp/snmp.h>
+#include <ucd-snmp/snmp_api.h>
+#include <ucd-snmp/snmp_client.h>
+#include <ucd-snmp/snmp_impl.h> /* special ASN types */
+#endif
 #ifdef DEBUG_SNMP
 #include <ucd-snmp/snmp_debug.h>
 #endif /* DEBUG_SNMP */
@@ -640,7 +649,7 @@ update_plugin()
 
 
 	if ( (reader->session) && (reader->sample) ) {
-	    if (reader->error) {
+	    if ((reader->error) && (reader->panel != NULL)) {
 	        if (!reader->old_error ||
 		    strcmp(reader->error,
 			   reader->old_error) ) {
@@ -658,11 +667,19 @@ update_plugin()
 			    if (reader->chart != NULL)
 			    {
 				    gkrellm_store_chartdata(reader->chart, 0, reader->sample_n);
+				    text = render_label(reader);
 				    gkrellm_draw_chartdata(reader->chart);
+				    gkrellm_draw_chart_text(reader->chart,
+							    DEFAULT_STYLE,
+							    text);
 				    gkrellm_draw_chart_to_screen(reader->chart);
+				    g_free(text);
 			    }
 
 		    /* if there are changes update label */
+		if (reader->panel != NULL)
+		{
+			reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE);
 		if ( !reader->old_sample || strcmp(reader->sample,
 						   reader->old_sample) ||
 		     (reader->sample_n != reader->old_sample_n) ) {
@@ -683,7 +700,7 @@ update_plugin()
 		    reader->old_sample_n = reader->sample_n;
 		    reader->old_sample_time = reader->sample_time;
 		}
-		reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE);
+		}
 	    }
 
 	    /* back up the old sample */
@@ -691,7 +708,9 @@ update_plugin()
 	    reader->old_sample_time = reader->sample_time;
 
 	} else {
+		if (reader->panel != NULL)
 	    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
+		if (reader->panel != NULL)
 	    gtk_tooltips_disable(reader->tooltip);
 	    //	i = -1;
 	}
@@ -705,8 +724,10 @@ update_plugin()
 	clock_style_id = gkrellm_lookup_meter_style_id(CLOCK_STYLE_NAME);
 #endif
 
+		if (reader->panel != NULL)
 	gkrellm_draw_panel_label( reader->panel,
 				  gkrellm_bg_panel_image(clock_style_id) );
+		if (reader->panel != NULL)
 	gkrellm_draw_layers(reader->panel);
     }
 
@@ -718,7 +739,7 @@ panel_expose_event(GtkWidget *widget, GdkEventExpose *ev)
     Reader *reader;
 
     for (reader = readers; reader ; reader = reader->next)
-        if (widget == reader->panel->drawing_area) {
+        if ((reader->panel) && (widget == reader->panel->drawing_area)) {
 
 	    gdk_draw_pixmap(widget->window,
 			    widget->style->fg_gc[GTK_WIDGET_STATE (widget)],
@@ -735,7 +756,7 @@ chart_expose_event(GtkWidget *widget, GdkEventExpose *ev)
     Reader *reader;
 
     for (reader = readers; reader ; reader = reader->next)
-        if (widget == reader->panel->drawing_area) {
+        if ((reader->chart) && (widget == reader->chart->drawing_area)) {
 
 	    gdk_draw_pixmap(widget->window,
 			    widget->style->fg_gc[GTK_WIDGET_STATE (widget)],
@@ -754,21 +775,14 @@ cb_chart_click(GtkWidget *widget, GdkEventButton *event, gpointer data)
 	}
 
 static void
-create_reader(GtkWidget *vbox, Reader *reader, gint first_create)
+create_chart(GtkWidget *vbox, Reader *reader, gint first_create)
 {
-      //    Krell           *k;
-    Style           *style;
-    //    GdkImlibImage   *krell_image;
-    gchar *text;
-
-
-
     if (first_create)
 	    reader->chart = gkrellm_chart_new0();
 
     gkrellm_set_chart_height_default(reader->chart, 20);
 
-    gkrellm_chart_create(vbox, mon, reader->chart, &(reader->chart_config));
+    gkrellm_chart_create(vbox, mon, reader->chart, &reader->chart_config);
 
     reader->chart_data = gkrellm_add_default_chartdata(reader->chart, "Plugin Data");
     
@@ -792,10 +806,15 @@ create_reader(GtkWidget *vbox, Reader *reader, gint first_create)
 	    gkrellm_draw_chart_to_screen(reader->chart);
     }
 
+}
 
-
-
-
+static void
+create_panel(GtkWidget *vbox, Reader *reader, gint first_create)
+{
+      //    Krell           *k;
+    Style           *style;
+    //    GdkImlibImage   *krell_image;
+    gchar *text;
 
     if (first_create)
         reader->panel = gkrellm_panel_new0();
@@ -842,32 +861,52 @@ create_reader(GtkWidget *vbox, Reader *reader, gint first_create)
 }
 
 static void
+create_reader(GtkWidget *vbox, Reader *reader, gint first_create)
+{
+	if (1) /* FIXME */
+		create_chart(vbox, reader, first_create);
+	else
+		create_panel(vbox, reader, first_create);
+}
+
+static void
 destroy_reader(Reader *reader)
 {
-  if (!reader)
-    return;
+	if (!reader)
+		return;
 
-  reader->session->callback_magic = 0; /* detach the callback */
-  g_free(reader->label);
-  g_free(reader->peer);
-  g_free(reader->community);
-  g_free(reader->oid_str);
-  g_free(reader->unit);
+	reader->session->callback_magic = 0; /* detach the callback */
+	g_free(reader->label);
+	g_free(reader->peer);
+	g_free(reader->community);
+	g_free(reader->oid_str);
+	g_free(reader->unit);
 
-  g_free(reader->sample);
-  g_free(reader->old_sample);
+	g_free(reader->sample);
+	g_free(reader->old_sample);
 
-  /* can't free snmp session. may be there are pending snmp_reads! */
-/*
-  if (reader->session)
-    snmp_close(reader->session);
-  g_free(reader->session);
-*/
+	/* can't free snmp session. may be there are pending snmp_reads! */
+	/*
+	if (reader->session)
+		snmp_close(reader->session);
+	g_free(reader->session);
+	*/
+  
+	if (reader->panel)
+	{
+		gkrellm_monitor_height_adjust( - reader->panel->h);
+		gkrellm_panel_destroy(reader->panel);
+	}
 
-  gkrellm_monitor_height_adjust( - reader->panel->h);
-  gkrellm_panel_destroy(reader->panel);
-  //  gtk_widget_destroy(reader->vbox);
-  g_free(reader);
+	if (reader->chart)
+	{
+		gkrellm_monitor_height_adjust( - reader->chart->h);
+		gkrellm_chartconfig_destroy(&reader->chart_config);
+		gkrellm_chart_destroy(reader->chart);
+	}
+
+	//  gtk_widget_destroy(reader->vbox);
+	g_free(reader);
 }
 
 static void
@@ -1258,8 +1297,8 @@ static gchar    *plugin_info_text =
 "(1)\n"
 "The ambiente temperature sensor for Oldenburg i.O., Germany\n"
 " (see http://www.PMNET.uni-oldenburg.de/temperatur.php3)\n"
-"is world readable using the following pseudo URL\n"
-"snmp://public@134.106.172.2:161/.1.3.6.1.4.1.2021.8.1.101.1\n"
+"is world readable using the following community/server, oid\n"
+"public / 134.106.172.2 port 161 oid .1.3.6.1.4.1.2021.8.1.101.1\n"
 "\n"
 "That is:\n"
 " SNMP peer '134.106.172.2' (kyle.pmnet.uni-oldenburg.de)\n"
@@ -1273,14 +1312,14 @@ static gchar    *plugin_info_text =
 "\n"
 "Server CPU load using a string ranging from 0.00 to 1.00\n"
 "\n"
-"snmp://public@134.106.120.1:161/.1.3.6.1.4.1.2021.10.1.3.1\n"
+"public / 134.106.120.1 pot 161 oid .1.3.6.1.4.1.2021.10.1.3.1\n"
 "(Thats the load factor for PMNET's Stan)\n"
 "\n"
 "(3)\n"
 "\n"
 "Server CPU load using integer variable ranging from 0 to 100\n"
 "\n"
-"snmp://public@134.106.172.2:161/.1.3.6.1.4.1.2021.10.1.5.1\n"
+"public / 134.106.172.2 port 161 oid .1.3.6.1.4.1.2021.10.1.5.1\n"
 "(Thats the percentile load on PMNET's Kyle)\n"
 "\n"
 "please mail any problems/questions to me...\n"
@@ -1289,8 +1328,8 @@ static gchar    *plugin_info_text =
 static gchar    *plugin_about_text =
    "SNMP plugin 0.17\n"
    "GKrellM SNMP monitor Plugin\n\n"
-   "Copyright (C) 2000-2001 Christian W. Zuckschwerdt\n"
-   "zany@triq.net\n\n"
+   "Copyright (C) 2000-2002 Christian W. Zuckschwerdt <zany@triq.net>\n"
+   "\n"
    "http://triq.net/gkrellm.html\n\n"
    "Released under the GNU Public Licence"
 ;
