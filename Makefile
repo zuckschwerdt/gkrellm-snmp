@@ -1,27 +1,48 @@
-# Sample Makefile for a GKrellM plugin, edited for gkrellm_snmp
+# Makefile for a GKrellM SNMP monitor plugin
 
-GTK_INCLUDE = `gtk-config --cflags`
-GTK_LIB = `gtk-config --libs`
+# Linux
+GTK_CONFIG = gtk-config
+IMLIB_CONFIG = imlib-config
+SYSLIB = -lsnmp
+# we need lib crypto if libsnmp has privacy support.
+SYSLIB += -lcrypto
 
-IMLIB_INCLUDE = `imlib-config --cflags-gdk`
-IMLIB_LIB = `imlib-config --libs-gdk`
+# FreeBSD
+#GTK_CONFIG = gtk12-config
+#IMLIB_CONFIG = imlib-config
+#SYSLIB = -lsnmp
+
+PLUGIN_DIR = /usr/share/gkrellm/plugins
+GKRELLM_INCLUDE = -I/usr/local/include
+
+GTK_INCLUDE = `$(GTK_CONFIG) --cflags`
+GTK_LIB = `$(GTK_CONFIG) --libs`
+
+IMLIB_INCLUDE = `$(IMLIB_CONFIG) --cflags-gdk`
+IMLIB_LIB = `$(IMLIB_CONFIG) --libs-gdk`
 
 
-FLAGS = -O2 -Wall -fPIC $(GTK_INCLUDE) $(IMLIB_INCLUDE)
-LIBS = $(GTK_LIB) $(IMLIB_LIB) -lsnmp -lcrypto
+FLAGS = -O2 -Wall -fPIC $(GTK_INCLUDE) $(IMLIB_INCLUDE) $(GKRELLM_INCLUDE)
+LIBS = $(GTK_LIB) $(IMLIB_LIB) $(SYSLIB)
 LFLAGS = -shared
 
 CC = gcc $(CFLAGS) $(FLAGS)
 
+INSTALL = install -c
+INSTALL_PROGRAM = $(INSTALL) -s
+
 OBJS = gkrellm_snmp.o
 
-gkrellm_snmp.so: $(OBJS)
+all:	gkrellm_snmp.so
+
+gkrellm_snmp.so:	$(OBJS)
 	$(CC) $(OBJS) -o gkrellm_snmp.so $(LFLAGS) $(LIBS)
 
 clean:
 	rm -f *.o core *.so* *.bak *~
 
 install: 
-	install -c -s -m 755 gkrellm_snmp.so /usr/share/gkrellm/plugins
+	$(INSTALL_PROGRAM) -m 755 gkrellm_snmp.so $(PLUGIN_DIR)
 
-# gkrellm_snmp.o: gkrellm_snmp.c
+gkrellm_snmp.o:	gkrellm_snmp.c
+

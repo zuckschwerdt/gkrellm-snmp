@@ -1,0 +1,95 @@
+
+gkrellm_snmp: GKrellM SNMP monitor Plugin
+Author:    Christian W. Zuckschwerdt <zany@triq.net>
+Homepage:  http://triq.net/gkrellm/
+
+
+A plugin for GKrellM, that let's you monitor SNMP vars.
+
+
+Compiling:
+===========
+
+* For linux: just run the normal 'make'.
+* For freebsd: run 'make freebsd'.
+
+
+Installing:
+===========
+Running 'make install' will place the plugin under
+/usr/share/gkrellm/plugins. You can also manually place the resulting
+gkrellm_snmp.so under ~/.gkrellm/plugins. After restarting gkrellm, you
+should be able to enable it in the gkrellm plugins configuration menu.
+
+
+Troubleshooting:
+================
+If you have trouble compiling the plugin. Make sure you have gtk 1.2 and 
+gkrellm >= 0.9.8 and you've installed the gkrellm header files in
+/usr/include/gkrellm or /usr/local/include/gkrellm. If you have placed the
+header files in some other dir, edit GKRELLM_INCLUDE in the Makefile
+ 
+Bugs:
+=====
+Hopefully none, but running on FreeBSD is not tested very well,
+please mail any problems/bugs to me...
+
+
+Some example:
+=============
+
+The ambiente temperature sensor for Oldenburg i.O., Germany
+(see http://www.PMNET.uni-oldenburg.de/temperatur.php3)
+
+is world readable using the following pseudo URL
+snmp://public@134.106.172.2/.1.3.6.1.4.1.2021.8.1.101.1
+
+That is:
+ SNMP peer "134.106.172.2" (kyle.pmnet.uni-oldenburg.de)
+ SNMP community name "public"
+ SNMP oid ".1.3.6.1.4.1.2021.8.1.101.1"
+
+
+Interesting questions:
+======================
+
+Do you want/need
+ monitor multiple oid's at once?
+ charts instead of krells?
+ SNMP v1, v2, v3 support?
+ SNMP privacy options?
+
+ Enter peer, port, community and oid in separate fields
+ or as snmp://community@peer:port/oid ?
+
+ other SNMP lib instead of UCD-SNMPD ?
+ GKrellM pre 0.9.8 support/compatibility?
+
+ instance mapping?
+
+
+Please help:
+============
+
+Can you give some usage examples?
+
+
+
+Thanks to:
+==========
+
+ Shamada Diundra <shamada@pmnet.uni-oldenburg.de>
+ (Testing on RedHad Linux)
+
+ Eike Bernhardt <teefax@pmnet.uni-oldenburg.de>
+ (Testing various old libs)
+
+
+AUTHOR AND WEBPAGE:
+===================
+
+Christian W. Zuckschwerdt  <zany@triq.net>
+GKrellM SNMP can soon be found at http://triq.net/
+and hopefully at GKrellM homepage
+
+

@@ -47,6 +47,8 @@
 #define DEFAULT_PEERNAME        "134.106.172.2"
 #define DEFAULT_COMMUNITY       "public"
 
+#define DEFAULT_FORMAT          "%s °C"
+
 
 char *simpleSNMPget(char *peername, char *community,
 		    oid *name, size_t name_length)
@@ -152,38 +154,47 @@ retry:
 
 static Panel    *panel;
 
+gchar *format;
 gchar *peername, *community, *oid_str;
 oid objid[MAX_OID_LEN];
 size_t objid_length;
 
 static void
 update_plugin()
+{
+  Krell       *k;
+  gchar *p;
+  gchar buf[100];
+  gint i;
+
+  if ((GK.timer_ticks % 100) == 0)
     {
-    Krell       *k;
-    char *p;
+      k = KRELL(panel);
+      k->previous = 0;
 
-    if ((GK.timer_ticks % 100) == 0)
-        {
-        k = KRELL(panel);
-        k->previous = 0;
+      p = simpleSNMPget(peername, community, objid, objid_length);
 
-	p = simpleSNMPget(peername, community, objid, objid_length);
+      if (! format || ! strlen(format)) {
+	format = g_strdup(DEFAULT_FORMAT);
+      }
 
-	if (! p)
-	  p = "Error";
+      if (p) {
+	sprintf(buf, format, p);
+	i = atoi(p);
+	g_free(p);
+      } else {
+	strcpy(buf, "Error");
+	i = -1;
+      }
+      
+      gkrellm_update_krell(panel, k, i);
 
-        gkrellm_update_krell(panel, k, atoi(p) );
+      panel->label->string = g_strdup(buf);
 
-	panel->label->string = p;
-        gkrellm_draw_panel_label( panel, GK.bg_panel_image[CLOCK_STYLE]);
-
-        gkrellm_draw_layers(panel);
-
-	if (p)
-	  g_free(p);
-
-        }
+      gkrellm_draw_panel_label( panel, GK.bg_panel_image[CLOCK_STYLE]);
+      gkrellm_draw_layers(panel);
     }
+}
 
 static gint
 panel_expose_event(GtkWidget *widget, GdkEventExpose *ev)
@@ -240,22 +251,27 @@ static GtkWidget        *peername_entry;
 static GtkWidget        *community_entry;
 static GtkWidget        *oid_entry;
 
+static GtkWidget        *format_entry;
+
 
 static void
 save_plugin_config(FILE *f)
         {
-        fprintf(f, "%s snmp://%s@%s/%s\n", PLUGIN_CONFIG_KEYWORD,
-		community, peername, oid_str);
+        fprintf(f, "%s snmp://%s@%s/%s %s\n",
+		PLUGIN_CONFIG_KEYWORD,
+		community, peername, oid_str, format);
         }
 
 static void
 load_plugin_config(gchar *arg)
 {
   gchar   proto[255], bufc[255], bufp[255], bufo[255];
+  gchar   buff[255];
   gint    n;
 
-  n = sscanf(arg, "%[^:]://%[^@]@%[^/]/%s", proto, bufc, bufp, bufo);
-  if (n == 4)
+  n = sscanf(arg, "%[^:]://%[^@]@%[^/]/%s %[^\n]",
+	     proto, bufc, bufp, bufo, buff);
+  if (n >= 4)
     {
       if (g_strcasecmp(proto, "snmp") == 0) {
 	if (community)
@@ -271,6 +287,13 @@ load_plugin_config(gchar *arg)
 	oid_str = g_strdup(bufo);
 	objid_length = MAX_OID_LEN;
 	read_objid(oid_str, objid, &objid_length);
+
+	if (n == 5) {
+	  if (format)
+	    g_free(format);
+	  format = g_strdup(buff);
+	}
+
       }
     }
 }
@@ -304,6 +327,15 @@ apply_plugin_config()
       oid_str = g_strdup(name);
       objid_length = MAX_OID_LEN;
       read_objid(oid_str, objid, &objid_length);
+    }
+
+
+  name = gtk_entry_get_text(GTK_ENTRY(format_entry));
+  if (g_strcasecmp(format, name) != 0)
+    {
+      if (format)
+	g_free(format);
+      format = g_strdup(name);
     }
 
 }
@@ -370,6 +402,18 @@ create_plugin_tab(GtkWidget *tab_vbox)
 	gtk_container_add(GTK_CONTAINER(vbox),hbox);
 
 
+	hbox = gtk_hbox_new(FALSE,0);
+	label = gtk_label_new("Format Text : ");
+	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
+
+	format_entry = gtk_entry_new();
+	gtk_entry_set_text(GTK_ENTRY(format_entry), format);
+	gtk_box_pack_start(GTK_BOX(hbox),format_entry,FALSE,FALSE,0);
+
+	gtk_container_add(GTK_CONTAINER(vbox),hbox);
+
+
+
 /* --- Info tab */
         vbox = create_tab(tabs, "Info");
         scrolled = gtk_scrolled_window_new(NULL, NULL);
@@ -421,6 +465,7 @@ init_plugin(void)
     oid_str = g_strdup(DEFAULT_OID);
     peername = g_strdup(DEFAULT_PEERNAME);
     community = g_strdup(DEFAULT_COMMUNITY);
+    format = NULL;
 
     init_mib();
     objid_length = MAX_OID_LEN;
