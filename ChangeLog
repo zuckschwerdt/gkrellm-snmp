@@ -1,6 +1,11 @@
 
 GKrellM_SNMP Changelog:
 
+0.15 (2001-03-29)
+- fixed extended ASN1 types.
+- delta monitoring. (eg. monitor packet counters instead of gauges)
+- using whitespace in label and unit is save now.
+
 0.14 (2001-02-02)
 - Symbolic OIDs are working.
 - work-around : early freeing of snmp session caused errors

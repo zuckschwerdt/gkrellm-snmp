@@ -14,7 +14,6 @@ Mine is compiled staticly -- so I don't need to link against any lib.
 > I have problems with GKrellM SNMP v0.9. (I use it on GKrellM 0.10.5)
 > Your sample connections are working, but my custom OID won't.
 
-If seen at least one broken router (cisco-2514 w/ IOS Version 11.2(5))
-reporting the wrong ASN.1 type (ASN_BOOLEAN instead of ASN_INTEGER).
+There is some broken hardware and some ASN.1 types aren't implemented, yet.
 Please report the offending OID's and I'll see if there's a workaround
 possible.

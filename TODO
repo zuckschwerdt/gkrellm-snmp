@@ -16,8 +16,6 @@ Do you want/need
 
  instance mapping?
 
- Diffential monitors (eg. monitor packet counters instead of gauges)?
-
 
 
 Date: 06 Jun 2000 14:59:43 +0200
@@ -59,6 +57,7 @@ A divisor would be nice, too.  For example, I'm monitoring interface usage
 on a router and the fields are given in bits/sec--It'd be handy if I could
 divide the result by 1000 and get the kilobits/sec as this would take up
 less room.
+-> Todo, a variable auto divisor is already there.
 
 Though I don't usually need them, I noticed that re-reading the config file
 will break if the descriptive text has a space in it.

@@ -11,8 +11,9 @@ Prerequisites:
 ===============
 You need a SNMP library to run this plugin.
 You also need the header (include) files for building.
-Tested with UCD-SNMP >= 4.0.0 ( http://ucd-snmp.ucdavis.edu/ ).
-(If you want to try -old- CMU-SNMP, please mail some feedback).
+Tested with UCD-SNMP >= 4.1 ( http://ucd-snmp.ucdavis.edu/ ).
+(If you want to try -old- CMU-SNMP or UCD-SNMP <= 4.0, please be so kind
+ and mail some feedback).
 
 
 Compiling:
@@ -77,6 +78,16 @@ Server CPU load using integer variable ranging from 0 to 100
  Peer: 134.106.172.2  Port: 161  Community: public
  OID: laLoadInt.1 (= .1.3.6.1.4.1.2021.10.1.5.1 from UCD-SNMP-MIB)
 
+(4)
+
+Most devices don't support gauges for interface load. They just count
+octets. You can get around that limitation with the delta monitoring
+feature. (eg. monitor packet counters instead of gauges)
+
+ Peer: 134.106.172.2  Port: 161  Community: public
+ OID: ifInOctets.1 (= .1.3.6.1.2.1.2.2.1.10.1 from RFC1213-MIB)
+ or OID: ifOutOctets.1 (= .1.3.6.1.2.1.2.2.1.16.1 from RFC1213-MIB)
+Be sure to check the button "Delta".
 
 You can convert the symbolic OID to numbers and vice-versa with
 snmptranslate:
@@ -115,6 +126,10 @@ More interessting OIDs:
   avgBusy5 CPU-load sampled over 5 minutes
   .1.3.6.1.4.1.9.2.1.58
 
+Where <interface> means the number of the interface you wish to monitor.
+Be aware that software routers are likely to have this setup
+ ifDescr.1 = lo0 ; ifDescr.2 = eth0 ;ifDescr.3 = eth1
+So if you mean eth0 you need to write "2"!
 
 Be always sure to prepend the leading dot "." it's much like the
 root "/" in path names.
@@ -162,22 +177,27 @@ RedHad Linux 6.1
 Thanks to:
 ==========
 
- Shamada Diundra <shamada@pmnet.uni-oldenburg.de>
- (Testing on RedHad Linux)
+ Bill Wilson <billw@wt.net>
+ (valuable feedback and last but not least making GKrellM!)
 
  Eike Bernhardt <teefax@pmnet.uni-oldenburg.de>
  (Makefile improvements, Testing on FreeBSD)
 
- Bill Wilson <billw@wt.net>
- (valuable feedback and last but not least making GKrellM!)
+ Shamada Diundra <shamada@pmnet.uni-oldenburg.de>
+ (Testing on RedHad Linux)
 
-- Fixed ASN.1 return type strangeness with cisco7204VXR router    
-  Stefan Raab <stefan.raab@nextel.com>
-  (bug report and cisco7204VXR access)
+ Stefan Raab <stefan.raab@nextel.com>
+ (Fixed ASN.1 return type strangeness with cisco7204VXR router    
+  bug report and cisco7204VXR access)
 
  Mikael Blomqvist <micke@altcom.se>
  (GKrellM 1.0.4 changes)
 
+ Sami Haahtinen <ressu@debian.org>
+ (requested delta monitoring)
+
+ Peter Herz <peterh@connectnet.com>
+ (suggestions on divisor/scaling)
 
 AUTHOR AND WEBPAGE:
 ===================

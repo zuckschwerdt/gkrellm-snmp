@@ -15,7 +15,8 @@
 |  GNU General Public License for more details.
 |
 |  To get a copy of the GNU General Puplic License,  write to the
-|  Free Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+|  Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+|                                  Boston, MA 02111-1307, USA.
 */
 
 /* Installation:
@@ -39,6 +40,7 @@
 #include <ucd-snmp/snmp.h>
 #include <ucd-snmp/snmp_api.h>
 #include <ucd-snmp/snmp_client.h>
+#include <ucd-snmp/snmp_impl.h> /* special ASN types */
 #ifdef DEBUG_SNMP
 #include <ucd-snmp/snmp_debug.h>
 #endif /* DEBUG_SNMP */
@@ -58,7 +60,7 @@
 
  
 #define SNMP_PLUGIN_MAJOR_VERSION 0
-#define SNMP_PLUGIN_MINOR_VERSION 14
+#define SNMP_PLUGIN_MINOR_VERSION 15
 
 #define PLUGIN_CONFIG_KEYWORD   "snmp_monitor"
 
@@ -77,13 +79,36 @@ struct Reader {
 	gchar			*unit;
 	gint			delay;
 	gboolean		active;
+	gboolean		delta;
+	gchar			*sample;
+	u_long			sample_n;
+	u_long			sample_time;
 	gchar			*old_sample;
+	u_long			old_sample_n;
+	u_long			old_sample_time;
+	gchar			*error;
 	gchar			*old_error;
 	struct snmp_session	*session;
 	Panel			*panel;
 	GtkTooltips             *tooltip;
 } ;
 
+
+/*
+ * scale num to string (FIXME)
+ */
+
+gchar *
+scale(u_long num)
+{
+    if (num > 6000000000)
+	return g_strdup_printf("%ldG", num/1024/1024/1024);
+    if (num > 6000000)
+	return g_strdup_printf("%ldM", num/1024/1024);
+    if (num > 6000)
+	return g_strdup_printf("%ldK", num/1024);
+    return g_strdup_printf("%ld", num);
+}
 
 /*
  * snmp_parse_args.c
@@ -123,48 +148,74 @@ snmp_input(int op,
 {
     struct variable_list *vars;
     gchar *result = NULL;
+    gchar *error = NULL;
+    u_long time = 0;
+    u_long result_n = 0;
+    Reader *reader = NULL;
 
     if (op == RECEIVED_MESSAGE) {
 
         if (pdu->errstat == SNMP_ERR_NOERROR) {
 
-	  /*
-	  fprintf(stderr, "recv from: %s type: %d\n",
-		  session->peername, pdu->variables->type);
-	  */
+	    /*
+	    fprintf(stderr, "recv from (@ %ld): %s type: %d\n",
+	            pdu->time, session->peername, pdu->variables->type);
+	    */
+
             for(vars = pdu->variables; vars; vars = vars->next_variable) {
-                if (vars->type & ASN_OCTET_STR) /* value is a string */
-                    result = g_strndup(vars->val.string, vars->val_len);
-                if (vars->type & ASN_INTEGER) { /* value is a integer */
-		    result = g_strdup_printf("%ld", *vars->val.integer);
-  		    if (*vars->val.integer > 9000)
-		        result = g_strdup_printf("%ldK", *vars->val.integer/1024);
-  		    if (*vars->val.integer > 9000000)
-		        result = g_strdup_printf("%ldM", *vars->val.integer/1024/1024);
+                switch (vars->type) {
+		case ASN_TIMETICKS:
+		    time = *vars->val.integer;
+		    break;
+		case ASN_OCTET_STR: /* value is a string */
+		    result = g_strndup(vars->val.string, vars->val_len);
+		    break;
+		case ASN_INTEGER: /* value is a integer */
+		case ASN_COUNTER: /* use as if it were integer */
+		case ASN_UNSIGNED: /* use as if it were integer */
+		    result_n = *vars->val.integer;
+		    result = scale(*vars->val.integer);
+		    break;
+		default:
+		    fprintf(stderr, "recv unknown ASN type: %d - please report to zany@triq.net\n", vars->type);
 		}
-                if (vars->type & ASN_BOOLEAN) /* value is a boolean */
-		  /* use as integer (tweak for Dominik Winter's cisco2514 */
-                    result = g_strdup_printf("%ld", *vars->val.integer);
-            }
+	    }
                               
         } else {
-            result = g_strdup_printf("Error in packet\nReason: %s",
+            error = g_strdup_printf("Error in packet\nReason: %s",
 				     snmp_errstring(pdu->errstat));
 
 	    if (pdu->errstat == SNMP_ERR_NOSUCHNAME) {
-		result = g_strdup_printf("Error! This name doesn't exist!");
+		error = g_strdup_printf("Error! This name doesn't exist!");
             }
         }
 
 
     } else if (op == TIMED_OUT){
-        result = g_strdup_printf("Error! SNMP Timeout.");
+        error = g_strdup_printf("Error! SNMP Timeout.");
     }
-    /* we use session's callback magic to pass back a *gchar */
-    if (session->callback_magic)
-	g_free(session->callback_magic);
-    session->callback_magic = result;
-
+    /* we use session's callback magic to pass back data */
+    if (session->callback_magic) {
+	reader = session->callback_magic;
+	if (error) {
+	    if (reader->error)
+		g_free(reader->error);
+	    reader->error = error;
+	} else {
+	    if (reader->sample)
+		g_free(reader->sample);
+	    /* should we save data ? */
+	    /*
+	    if (reader->old_sample)
+		g_free(reader->old_sample);
+	    reader->old_sample = reader->sample;
+	    reader->old_sample-time = reader->sample_time;
+	    */
+	    reader->sample = result;
+	    reader->sample_n = result_n;
+	    reader->sample_time = time;
+	}
+    }
     return 1;
 }
 
@@ -202,8 +253,9 @@ simpleSNMPupdate()
 
 struct snmp_session *
 simpleSNMPopen(gchar *peername,
-		gint port,
-		gchar *community)
+	       gint port,
+	       gchar *community,
+	       void *data)
 {
     struct snmp_session session, *ss;
 
@@ -222,7 +274,7 @@ simpleSNMPopen(gchar *peername,
     session.timeout = SNMP_DEFAULT_TIMEOUT;
 
     session.callback = snmp_input;
-    session.callback_magic = NULL; /* will be used as (* gchar) */
+    session.callback_magic = data; /* most likely a Reader */
     session.authenticator = NULL;
 
     /* 
@@ -243,11 +295,23 @@ simpleSNMPsend(struct snmp_session *session,
 	       size_t name_length)
 {
     struct snmp_pdu *pdu;
+    oid uptime[MAX_OID_LEN];
+    size_t uptime_length;
 
     /* 
      * Create PDU for GET request and add object names to request.
      */
     pdu = snmp_pdu_create(SNMP_MSG_GET);
+
+    /* 
+     * First insert uptime request into PDU.
+     */
+    uptime_length = MAX_OID_LEN;
+    if (!snmp_parse_oid("system.sysUpTime.0",
+			uptime, &uptime_length)) {
+	    printf("error parsing oid\n");
+    }
+    snmp_add_null_var(pdu, uptime, uptime_length);
 
     snmp_add_null_var(pdu, name, name_length);
 
@@ -268,6 +332,7 @@ update_plugin()
     Reader *reader;
     gchar  *text;
     gint clock_style_id;
+    u_long delta, divisor;
     //  Krell       *k;
     //  gint i;
 
@@ -283,7 +348,8 @@ update_plugin()
 	if ( (! reader->session) && (! reader->old_error) ) {
 	    reader->session = simpleSNMPopen(reader->peer,
 					     reader->port,
-					     reader->community);
+					     reader->community,
+					     reader);
 	    if (! reader->session)
 		reader->old_error = g_strdup_printf ("%s %s (snmp://%s@%s:%d/%s)",
 					    reader->label,
@@ -300,17 +366,17 @@ update_plugin()
 			   reader->objid_length);
 
 
-	if ( (reader->session) && (reader->session->callback_magic) ) {
-	    if (!g_strncasecmp(reader->session->callback_magic, "ERROR", 5)) {
+	if ( (reader->session) && (reader->sample) ) {
+	    if (reader->error) {
 	        if (!reader->old_error ||
-		    strcmp(reader->session->callback_magic,
+		    strcmp(reader->error,
 			   reader->old_error) ) {
 		    g_free(reader->old_error);
-		    reader->old_error = g_strdup(reader->session->callback_magic);
+		    reader->old_error = g_strdup(reader->error);
 		    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
 		    text = g_strdup_printf ("%s %s (snmp://%s@%s:%d/%s)",
 					    reader->label,
-					    (gchar*)reader->session->callback_magic,
+					    (gchar*)reader->error,
 					    reader->community,
 					    reader->peer, reader->port,
 					    reader->oid_str );
@@ -319,31 +385,55 @@ update_plugin()
 		    g_free(text);
 		}
 	    } else {
-		if ( !reader->old_sample || strcmp(reader->session->callback_magic,
-						   reader->old_sample) ) {
-		    g_free(reader->old_sample);
-		    reader->old_sample = g_strdup(reader->session->callback_magic);
+		if ( !reader->old_sample || strcmp(reader->sample,
+						   reader->old_sample) ||
+		     (reader->sample_n != reader->old_sample_n) ) {
 
-		    text = g_strconcat (reader->label, " ",
-					reader->session->callback_magic,
-					reader->unit, NULL);
+		    divisor = (reader->sample_time -
+			       reader->old_sample_time) / 100;
+		    /* 100: turn TimeTicks into seconds */
+
+		    if (divisor < 1) divisor = 1;
+		    delta = (reader->sample_n - reader->old_sample_n) /
+			    divisor;
+
+		    g_free(reader->old_sample);
+		    reader->old_sample = g_strdup(reader->sample);
+
+		    if (reader->delta) {
+			text = g_strdup_printf ("%s %s%s",
+						reader->label,
+						scale(delta),
+						reader->unit);
+		    } else {
+			text = g_strconcat (reader->label, " ",
+					    reader->sample,
+					    reader->unit, NULL);
+		    }
 		    dup_string(&reader->panel->label->string, text);
 		    g_free(text);
 		    //	i = atoi(text);
 
-		    text = g_strdup_printf ("%s %s %s  (snmp://%s@%s:%d/%s)",
+		    text = g_strdup_printf ("%s %s %s  (snmp://%s@%s:%d/%s) %ld",
 					    reader->label,
-					    (gchar*)reader->session->callback_magic,
+					    (gchar*)reader->sample,
 					    reader->unit, 
 					    reader->community,
 					    reader->peer, reader->port,
-					    reader->oid_str );
+					    reader->oid_str,
+					    delta );
 		    gtk_tooltips_set_tip(reader->tooltip, reader->panel->drawing_area, text, "");
 		    gtk_tooltips_enable(reader->tooltip);
 		    g_free(text);
+		    reader->old_sample_n = reader->sample_n;
+		    reader->old_sample_time = reader->sample_time;
 		}
 		reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE);
 	    }
+
+	    /* back up the old sample */
+	    reader->old_sample_n = reader->sample_n;
+	    reader->old_sample_time = reader->sample_time;
 
 	} else {
 	    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
@@ -439,19 +529,20 @@ destroy_reader(Reader *reader)
   if (!reader)
     return;
 
+  reader->session->callback_magic = 0; /* detach the callback */
   g_free(reader->label);
   g_free(reader->peer);
   g_free(reader->community);
   g_free(reader->oid_str);
   g_free(reader->unit);
 
+  g_free(reader->sample);
   g_free(reader->old_sample);
 
   /* can't free snmp session. may be there are pending snmp_reads! */
 /*
   if (reader->session)
     snmp_close(reader->session);
-  g_free(reader->session->callback_magic);
   g_free(reader->session);
 */
 
@@ -484,21 +575,32 @@ static GtkWidget        *oid_entry;
 static GtkWidget        *unit_entry;
 static GtkObject        *freq_spin_adj;
 static GtkWidget        *freq_spin;
+static GtkWidget        *delta_button;
 static GtkWidget        *reader_clist;
 static gint             selected_row = -1;
 static gint             list_modified;
+#define CLIST_WIDTH 9
 
+#define	 STR_DELIMITERS	" \t"
 
 static void
 save_plugin_config(FILE *f)
 {
   Reader *reader;
-  for (reader = readers; reader ; reader = reader->next)
-    fprintf(f, "%s %s snmp://%s@%s:%d/%s %s %d\n",
-	    PLUGIN_CONFIG_KEYWORD,
-	    reader->label, reader->community,
-	    reader->peer, reader->port,
-	    reader->oid_str, reader->unit, reader->delay);
+  gchar *label, *unit;
+
+  for (reader = readers; reader ; reader = reader->next) {
+      label = g_strdelimit(g_strdup(reader->label), STR_DELIMITERS, '_');
+      unit = g_strdelimit(g_strdup(reader->unit), STR_DELIMITERS, '_');
+      fprintf(f, "%s %s snmp://%s@%s:%d/%s %s %d %d\n",
+	      PLUGIN_CONFIG_KEYWORD,
+	      label, reader->community,
+	      reader->peer, reader->port,
+	      reader->oid_str, unit,
+	      reader->delay, reader->delta);
+      g_free(label);
+      g_free(unit);
+  }
 }
 
 static void
@@ -509,12 +611,12 @@ load_plugin_config(gchar *arg)
   gchar   proto[CFG_BUFSIZE], bufl[CFG_BUFSIZE];
   gchar   bufc[CFG_BUFSIZE], bufp[CFG_BUFSIZE];
   gchar   bufo[CFG_BUFSIZE], bufu[CFG_BUFSIZE];
-  gint    n, port=0, delay=0;
+  gint    n, port=0, delay=0, delta=0;
 
   reader = g_new0(Reader, 1); 
 
-  n = sscanf(arg, "%s %[^:]://%[^@]@%[^:]:%d/%s %s %d",
-	     bufl, proto, bufc, bufp, &port, bufo, bufu, &delay);
+  n = sscanf(arg, "%s %[^:]://%[^@]@%[^:]:%d/%s %s %d %d",
+	     bufl, proto, bufc, bufp, &port, bufo, bufu, &delay, &delta);
   if (n >= 6)
     {
       if (g_strcasecmp(proto, "snmp") == 0) {
@@ -522,7 +624,12 @@ load_plugin_config(gchar *arg)
 	dup_string(&reader->community, bufc);
 	dup_string(&reader->peer, bufp);
 	reader->port = port;
-	reader->delay = delay;
+	if (delay > 0)
+	    reader->delay = delay;
+	else
+	    reader->delay = 100;
+	reader->delta = delta;
+
 	dup_string(&reader->oid_str, bufo);
 
 	reader->objid_length = MAX_OID_LEN;
@@ -537,10 +644,9 @@ load_plugin_config(gchar *arg)
 	} else {
 	    dup_string(&reader->unit, "");
 	}
-        	
-	if (n != 8) {
-	  reader->delay = 100;
-	}
+
+	g_strdelimit(reader->label, "_", ' ');
+	g_strdelimit(reader->unit, "_", ' ');
 
 	// reader->old_sample = "SNMP"; // be nice.
       }
@@ -572,21 +678,23 @@ apply_plugin_config()
 
   for (row = 0; row < GTK_CLIST(reader_clist)->rows; ++row)
     {
+      gint i;
+      i = 0;
       reader = g_new0(Reader, 1);
 
-      gtk_clist_get_text(GTK_CLIST(reader_clist), row, 0, &name);
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
       dup_string(&reader->label, name);
 
-      gtk_clist_get_text(GTK_CLIST(reader_clist), row, 1, &name);
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
       dup_string(&reader->peer, name);
 
-      gtk_clist_get_text(GTK_CLIST(reader_clist), row, 2, &name);
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
       reader->port = atoi(name);
 
-      gtk_clist_get_text(GTK_CLIST(reader_clist), row, 3, &name);
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
       dup_string(&reader->community, name);
 
-      gtk_clist_get_text(GTK_CLIST(reader_clist), row, 4, &name);
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
       dup_string(&reader->oid_str, name);
       reader->objid_length = MAX_OID_LEN;
       if (!snmp_parse_oid(reader->oid_str,
@@ -595,11 +703,17 @@ apply_plugin_config()
 	  printf("error parsing oid\n");
       }
 
-      gtk_clist_get_text(GTK_CLIST(reader_clist), row, 5, &name);
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
       dup_string(&reader->unit, name);
 
-      gtk_clist_get_text(GTK_CLIST(reader_clist), row, 6, &name);
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
       reader->delay = atoi(name);
+
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
+      reader->active = (strcmp(name, "yes") == 0) ? TRUE : FALSE;
+
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
+      reader->delta = (strcmp(name, "yes") == 0) ? TRUE : FALSE;
 
       if (!readers)
           readers = reader;
@@ -624,6 +738,7 @@ reset_entries()
   gtk_entry_set_text(GTK_ENTRY(oid_entry), "");
   gtk_entry_set_text(GTK_ENTRY(unit_entry), "");
   // gtk_entry_set_text(GTK_ENTRY(freq_entry), "");
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(delta_button), FALSE);
 }
 
 
@@ -660,6 +775,10 @@ cb_clist_selected(GtkWidget *clist, gint row, gint column,
   gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
   state = (strcmp(s, "yes") == 0) ? TRUE : FALSE;
   //  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(mounting_button), state);
+
+  gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
+  state = (strcmp(s, "yes") == 0) ? TRUE : FALSE;
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(delta_button), state);
 
   selected_row = row;
 }
@@ -711,7 +830,7 @@ cb_clist_down(GtkWidget *widget)
 static void
 cb_enter(GtkWidget *widget)
 {
-  gchar           *buf[9];
+  gchar           *buf[CLIST_WIDTH];
   gint            i;
 
   i = 0;
@@ -723,6 +842,7 @@ cb_enter(GtkWidget *widget)
   buf[i++] = entry_get_alpha_text(&unit_entry);
   buf[i++] = entry_get_alpha_text(&freq_spin);
   buf[i++] = "yes"; // GTK_TOGGLE_BUTTON(active_button)->active ? "yes" : "no";
+  buf[i++] = GTK_TOGGLE_BUTTON(delta_button)->active ? "yes" : "no";
   buf[i] = NULL;
 
   /* validate we have input */
@@ -734,7 +854,7 @@ cb_enter(GtkWidget *widget)
     }
   if (selected_row >= 0)
     {
-      for (i = 0; i < 8; ++i)
+      for (i = 0; i < CLIST_WIDTH; ++i)
 	gtk_clist_set_text(GTK_CLIST(reader_clist), selected_row, i, buf[i]);
       gtk_clist_unselect_row(GTK_CLIST(reader_clist), selected_row, 0);
       selected_row = -1;
@@ -803,7 +923,7 @@ static gchar    *plugin_info_text =
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin 0.14\n"
+   "SNMP plugin 0.15\n"
    "GKrellM SNMP monitor Plugin\n\n"
    "Copyright (C) 2000-2001 Christian W. Zuckschwerdt\n"
    "zany@triq.net\n\n"
@@ -811,11 +931,10 @@ static gchar    *plugin_about_text =
    "Released under the GNU Public Licence"
 ;
 
-
-static gchar *reader_title[8] =
+static gchar *reader_title[CLIST_WIDTH] =
 { "Label", "Peer", "Port",
   "Community", "OID", "Unit",
-  "Freq", "Active" };
+  "Freq", "Active", "Delta" };
 
 static void
 create_plugin_tab(GtkWidget *tab_vbox)
@@ -831,7 +950,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
   GtkWidget               *text;
   GtkWidget               *label;
 
-  gchar                   *buf[9];
+  gchar                   *buf[10];
   gint                    row, i;
 
         /* Make a couple of tabs.  One for setup and one for info
@@ -868,6 +987,9 @@ create_plugin_tab(GtkWidget *tab_vbox)
 	freq_spin_adj = gtk_adjustment_new (100, 10, 6000, 10, 100, 100);
 	freq_spin = gtk_spin_button_new (GTK_ADJUSTMENT (freq_spin_adj), 1, 0);
 	gtk_box_pack_start(GTK_BOX(hbox),freq_spin,FALSE,FALSE,0);
+
+        delta_button = gtk_check_button_new_with_label("Delta");
+        gtk_box_pack_start(GTK_BOX(hbox),delta_button,FALSE,FALSE,0);
 
 	gtk_container_add(GTK_CONTAINER(vbox),hbox);
 	hbox = gtk_hbox_new(FALSE,0);
@@ -933,7 +1055,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
                         GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
         gtk_box_pack_start(GTK_BOX(vbox), scrolled, TRUE, TRUE, 0);
 
-	reader_clist = gtk_clist_new_with_titles(8, reader_title);	
+	reader_clist = gtk_clist_new_with_titles(CLIST_WIDTH, reader_title);	
         gtk_clist_set_shadow_type (GTK_CLIST(reader_clist), GTK_SHADOW_OUT);
 	gtk_clist_set_column_width (GTK_CLIST(reader_clist), 1, 100);
 	gtk_clist_set_column_width (GTK_CLIST(reader_clist), 4, 200);
@@ -956,6 +1078,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
 	    buf[i++] = reader->unit;
 	    buf[i++] = g_strdup_printf("%d", reader->delay);
 	    buf[i++] = reader->active ? "yes" : "no";
+	    buf[i++] = reader->delta ? "yes" : "no";
 	    buf[i] = NULL;
 	    row = gtk_clist_append(GTK_CLIST(reader_clist), buf);
 	  }
