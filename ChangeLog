@@ -1,7 +1,14 @@
 
 GKrellM_SNMP Changelog:
 
-0.10: (2000-08-)
+0.12: (2001-01-22)
+- minor tweaks for GKrellM 1.0.4
+
+0.11: (2000-11-30)
+- Tooltips with verbose info.
+- Errors get reported to tooltip instead of clobbering STDERR
+
+0.10: (2000-09-25)
 - You may now select the delay between reader updates
 - Workaround for buggy cisco's reporting ASN_INTEGER's as ASN_BOOLEAN
 

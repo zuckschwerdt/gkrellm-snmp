@@ -21,7 +21,9 @@
 /* Installation:
 |
 |     make
-|     cp gkrellm_snmp.so ~/.gkrellm/plugins
+|     make install
+|      or without using root-privileges
+|     make install-user
 |
 */
 
@@ -41,9 +43,17 @@
 
 #include <gkrellm/gkrellm.h>
 
+
+#if (VERSION_MAJOR <= 1)&&(VERSION_MINOR <= 0)&&(VERSION_REV <= 3)
+
+#else
+ #define entry_get_alpha_text gkrellm_entry_get_text
+ #define dup_string gkrellm_dup_string
+#endif
+
  
 #define SNMP_PLUGIN_MAJOR_VERSION 0
-#define SNMP_PLUGIN_MINOR_VERSION 8
+#define SNMP_PLUGIN_MINOR_VERSION 12
 
 #define PLUGIN_CONFIG_KEYWORD   "snmp_monitor"
 
@@ -63,8 +73,10 @@ struct Reader {
 	gint			delay;
 	gboolean		active;
 	gchar			*old_sample;
+	gchar			*old_error;
 	struct snmp_session	*session;
 	Panel			*panel;
+	GtkTooltips             *tooltip;
 } ;
 
 
@@ -77,7 +89,6 @@ snmp_input(int op,
 {
     struct variable_list *vars;
     gchar *result = NULL;
-    gint val;
 
     if (op == RECEIVED_MESSAGE) {
 
@@ -103,23 +114,23 @@ snmp_input(int op,
             }
                               
         } else {
-            fprintf(stderr, "SNMP Error in packet\nReason: %s\n",
-		    snmp_errstring(pdu->errstat));
+            result = g_strdup_printf("Error in packet\nReason: %s",
+				     snmp_errstring(pdu->errstat));
 
 	    if (pdu->errstat == SNMP_ERR_NOSUCHNAME) {
-  	        fprintf(stderr, "SNMP This name doesn't exist: ");
+		result = g_strdup_printf("Error! This name doesn't exist!");
             }
         }
 
-	/* we use session's callback magic to pass back a *gchar */
-	if (session->callback_magic)
-	    g_free(session->callback_magic);
-	session->callback_magic = result;
 
     } else if (op == TIMED_OUT){
-        fprintf(stderr, "SNMP Timeout: This shouldn't happen!\n");
-	session->callback_magic = NULL;
+        result = g_strdup_printf("Error! SNMP Timeout.");
     }
+    /* we use session's callback magic to pass back a *gchar */
+    if (session->callback_magic)
+	g_free(session->callback_magic);
+    session->callback_magic = result;
+
     return 1;
 }
 
@@ -248,22 +259,52 @@ update_plugin()
 
 
       if (reader->session->callback_magic) {
-	  if ( !reader->old_sample || strcmp(reader->session->callback_magic,
-					     reader->old_sample) ) {
-	    g_free(reader->old_sample);
-	    reader->old_sample = g_strdup(reader->session->callback_magic);
+	  if (!g_strncasecmp(reader->session->callback_magic, "ERROR", 5)) {
+	      if (!reader->old_error || strcmp(reader->session->callback_magic,
+					       reader->old_error) ) {
+		  g_free(reader->old_error);
+		  reader->old_error = g_strdup(reader->session->callback_magic);
+		  reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
+		  text = g_strdup_printf ("%s %s (snmp://%s@%s:%d/%s)",
+					  reader->label,
+					  (gchar*)reader->session->callback_magic,
+					  reader->community,
+					  reader->peer, reader->port,
+					  reader->oid_str );
+		  gtk_tooltips_set_tip(reader->tooltip, reader->panel->drawing_area, text, "");
+		  gtk_tooltips_enable(reader->tooltip);
+		  g_free(text);
+	      }
+	  } else {
+	      if ( !reader->old_sample || strcmp(reader->session->callback_magic,
+						 reader->old_sample) ) {
+		  g_free(reader->old_sample);
+		  reader->old_sample = g_strdup(reader->session->callback_magic);
 
-	    text = g_strconcat (reader->label,
-				reader->session->callback_magic,
-				reader->unit, NULL);
-	    dup_string(&reader->panel->label->string, text);
-	    //	i = atoi(text);
-	    g_free(text);
+		  text = g_strconcat (reader->label, " ",
+				      reader->session->callback_magic,
+				      reader->unit, NULL);
+		  dup_string(&reader->panel->label->string, text);
+		  g_free(text);
+		  //	i = atoi(text);
+
+		  text = g_strdup_printf ("%s %s %s  (snmp://%s@%s:%d/%s)",
+					  reader->label,
+					  (gchar*)reader->session->callback_magic,
+					  reader->unit, 
+					  reader->community,
+					  reader->peer, reader->port,
+					  reader->oid_str );
+		  gtk_tooltips_set_tip(reader->tooltip, reader->panel->drawing_area, text, "");
+		  gtk_tooltips_enable(reader->tooltip);
+		  g_free(text);
+	      }
+	      reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE);
 	  }
-	  reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE);
 
       } else {
 	  reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
+	  gtk_tooltips_disable(reader->tooltip);
 	  //	i = -1;
       }
       
@@ -326,7 +367,7 @@ create_reader(GtkWidget *vbox, Reader *reader, gint first_create)
     */
     reader->panel->textstyle = gkrellm_meter_textstyle(DEFAULT_STYLE);
     gkrellm_configure_panel(reader->panel, 
-			    g_strconcat (reader->label,
+			    g_strconcat (reader->label, " ",
 					 reader->old_sample,
 					 reader->unit, NULL),
 			    style);
@@ -341,9 +382,12 @@ create_reader(GtkWidget *vbox, Reader *reader, gint first_create)
     gkrellm_create_panel(vbox, reader->panel, gkrellm_bg_meter_image(DEFAULT_STYLE));
     gkrellm_monitor_height_adjust(reader->panel->h);
 
-    if (first_create)
-        gtk_signal_connect(GTK_OBJECT (reader->panel->drawing_area), "expose_event",
-                (GtkSignalFunc) panel_expose_event, NULL);
+    if (first_create) {
+        gtk_signal_connect(GTK_OBJECT (reader->panel->drawing_area),
+			   "expose_event",
+			   (GtkSignalFunc) panel_expose_event, NULL);
+	reader->tooltip=gtk_tooltips_new();
+    }
 }
 
 static void
@@ -441,9 +485,12 @@ load_plugin_config(gchar *arg)
 //	get_module_node(oid_str, "ANY", objid, &objid_length);
 	read_objid(reader->oid_str, reader->objid, &reader->objid_length);
 
-	if (n >= 7) {
-	  dup_string(&reader->unit, bufu);
+	if (n > 7) {
+	    dup_string(&reader->unit, bufu);
+	} else {
+	    dup_string(&reader->unit, "");
 	}
+        	
 	if (n != 8) {
 	  reader->delay = 100;
 	}
@@ -706,11 +753,11 @@ static gchar    *plugin_info_text =
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin 0.10\n"
+   "SNMP plugin 0.12\n"
    "GKrellM SNMP monitor Plugin\n\n"
-   "Copyright (C) 2000 Christian W. Zuckschwerdt\n"
+   "Copyright (C) 2000-2001 Christian W. Zuckschwerdt\n"
    "zany@triq.net\n\n"
-   "http://triq.net/gkrellm/\n\n"
+   "http://triq.net/gkrellm.html\n\n"
    "Released under the GNU Public Licence"
 ;
 
