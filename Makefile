@@ -13,6 +13,7 @@ SYSLIB += -lcrypto
 #SYSLIB = -lsnmp
 #PLUGIN_DIR = /usr/X11R6/libexec/gkrellm/plugins/
 
+USER_PLUGIN_DIR = $(HOME)/.gkrellm/plugins
 PLUGIN_DIR = /usr/share/gkrellm/plugins
 GKRELLM_INCLUDE = -I/usr/local/include
 
@@ -45,7 +46,10 @@ gkrellm_snmp.so:	$(OBJS)
 clean:
 	rm -f *.o core *.so* *.bak *~
 
-install: 
+install-user:	gkrellm_snmp.so
+	make PLUGIN_DIR=$(USER_PLUGIN_DIR) install
+
+install:	gkrellm_snmp.so
 	$(INSTALL) -m 755 -d $(PLUGIN_DIR)
 	$(INSTALL_PROGRAM) -m 755 gkrellm_snmp.so $(PLUGIN_DIR)
 

@@ -40,14 +40,9 @@
 
  
 #define VOLUME_MAJOR_VERSION 0
-#define VOLUME_MINOR_VERSION 1
+#define VOLUME_MINOR_VERSION 5
 
 #define PLUGIN_CONFIG_KEYWORD   "snmp_monitor"
-#define DEFAULT_OID             ".1.3.6.1.4.1.2021.8.1.101.1"
-#define DEFAULT_PEERNAME        "134.106.172.2"
-#define DEFAULT_COMMUNITY       "public"
-
-#define DEFAULT_FORMAT          "%s °C"
 
 
 typedef struct Reader Reader;
@@ -64,6 +59,7 @@ struct Reader {
   gchar            *unit;
   gint             delay;
   gboolean        active;
+  char       *old_sample;
   Panel           *panel;
 } ;
 
@@ -118,17 +114,9 @@ retry:
       if (response->errstat == SNMP_ERR_NOERROR){
         for(vars = response->variables; vars; vars = vars->next_variable) {
           if (vars->type == ASN_OCTET_STR) /* value is a string */
-	    {
-	      //printf("STRING: '%s'\n", vars->val.string);
-            result = g_strdup(vars->val.string);
-	    /* blame me this is fuk'n broken */
-	    result[4] = '\0';
-	    }
+	    result = g_strndup(vars->val.string, vars->val_len);
           if (vars->type == ASN_INTEGER) /* value is a integer */
-	    {
-	      //printf("NUMBER: '%ld'\n", *vars->val.integer);
             result = g_strdup_printf("%ld", *vars->val.integer);
-	    }
         }
                               
       } else {
@@ -185,7 +173,6 @@ update_plugin()
   Reader *reader;
   //  Krell       *k;
   gchar *p;
-  gchar *text;
   gint i;
 
   if ((GK.timer_ticks % 100) == 0)
@@ -200,17 +187,20 @@ update_plugin()
 			reader->objid_length);
 
       if (p) {
-	text = g_strconcat (reader->label, p, reader->unit, NULL);
+	g_free(reader->old_sample);
+	reader->old_sample = g_strconcat (reader->label, p, reader->unit, NULL);
+	reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE);
 	i = atoi(p);
 	g_free(p);
       } else {
-	text = g_strdup("Error");
+	reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
 	i = -1;
       }
       
       //      gkrellm_update_krell(panel, k, i);
 
-      reader->panel->label->string = text;
+      //      reader->panel->label->string = text;
+      dup_string(&reader->panel->label->string, reader->old_sample);
 
       gkrellm_draw_panel_label( reader->panel, GK.bg_panel_image[CLOCK_STYLE]);
       gkrellm_draw_layers(reader->panel);
@@ -260,6 +250,9 @@ create_reader(GtkWidget *vbox, Reader *reader, gint first_create)
     */
     reader->panel->textstyle = gkrellm_meter_textstyle(DEFAULT_STYLE);
     gkrellm_configure_panel(reader->panel, "SNMP", style);
+
+    //    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
+
 
     /* Build the configured panel with a background image and pack it into
     |  the vbox assigned to this monitor.
@@ -566,7 +559,7 @@ static gchar    *plugin_info_text =
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin 0.3\n"
+   "SNMP plugin 0.5\n"
    "GKrellM SNMP monitor Plugin\n\n"
    "Copyright (C) 2000 Christian W. Zuckschwerdt\n"
    "zany@triq.net\n\n"

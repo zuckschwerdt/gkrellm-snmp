@@ -16,7 +16,9 @@ Compiling:
 
 Installing:
 ===========
-Running 'make install' will place the plugin under
+Running 'make install-user' will place the plugin in your current home
+directory under ~/.gkrellm/plugins.
+Running 'make install' as superuser will place the plugin under
 /usr/share/gkrellm/plugins. You can also manually place the resulting
 gkrellm_snmp.so under ~/.gkrellm/plugins. After restarting gkrellm, you
 should be able to enable it in the gkrellm plugins configuration menu.
@@ -31,7 +33,7 @@ header files in some other dir, edit GKRELLM_INCLUDE in the Makefile
  
 Bugs:
 =====
-Segfaults regularily - I'll be bug hunting asap.
+I do consider this version stable.
 please mail any problems/bugs to me...
 
 Some example:
@@ -66,8 +68,8 @@ snmp://public@134.106.172.2/.1.3.6.1.4.1.2021.10.1.5.1
 (Thats the percentile load on PMNET's Kyle)
 
 
-Interesting questions:
-======================
+Call for features!
+==================
 
 Do you want/need
  monitor multiple oid's on the same server? (snmp bulk get)
@@ -82,6 +84,8 @@ Do you want/need
  GKrellM pre 0.9.8 support/compatibility?
 
  instance mapping?
+
+ Diffential monitors (eg. monitor packet counters instead of gauges)?
 
 
 Please help:

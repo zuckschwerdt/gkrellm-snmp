@@ -1,5 +1,8 @@
 GKrellM_SNMP Changelog:
 
+0.5
+- different panel styles for active/errored monitors
+
 0.4
 - Fixed the Segfault - that was way to easy...
 
@@ -10,7 +13,7 @@ GKrellM_SNMP Changelog:
 - You can now have multiple SNMP monitors
 
 0.2:
-- ChangeLog, README, Makefile
+- added ChangeLog, README, Makefile
 
 0.1:
-- beta testing release
+- proof of concept, testing release
