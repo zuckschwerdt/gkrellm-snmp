@@ -4,6 +4,11 @@ GKrellM_SNMP Changelog:
  - TODO: instance mapping
  - TODO: meters
 
+0.19-pre (2002-03-13)
+ - initial GKrellM chart support
+ - One can now monitor sysUpTime.0 (req. by Josenivaldo Benito Junior)
+ - ex. STREAM support (i.e. to use ssh tunneling)
+
 0.18 (2001-07-27)
  - probe button and capability display
  - display device uptime in tooltip

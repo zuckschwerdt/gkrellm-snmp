@@ -50,12 +50,13 @@
 
 #include <gkrellm/gkrellm.h>
 
-#define STREAM /* test for Lou Cephyr */
+/* #define STREAM /* test for Lou Cephyr */
 
 
 #define SNMP_PLUGIN_MAJOR_VERSION 0
 #define SNMP_PLUGIN_MINOR_VERSION 17
 
+#define PLUGIN_CONFIG_NAME   "SNMP"
 #define PLUGIN_CONFIG_KEYWORD   "snmp_monitor"
 
 
@@ -86,8 +87,13 @@ struct Reader {
 	gchar			*error;
 	gchar			*old_error;
 	struct snmp_session	*session;
+
 	Panel			*panel;
 	GtkTooltips             *tooltip;
+
+	Chart			*chart;
+	ChartData		*chart_data;
+	ChartConfig		*chart_config;
 };
 
 
@@ -108,6 +114,18 @@ scale(u_long num)
 }
 
 gchar *
+strdup_uptime (u_long time)
+{
+    gint up_d, up_h, up_m;
+
+    up_d = time/100/60/60/24;
+    up_h = (time/100/60/60) % 24;
+    up_m = (time/100/60) % 60;
+
+    return g_strdup_printf ("%dd %d:%d", up_d, up_h, up_m );
+}
+
+gchar *
 render_error(Reader *reader)
 {
     return g_strdup_printf ("%s %s (snmp://%s@%s:%d/%s)",
@@ -123,7 +141,7 @@ render_label(Reader *reader)
 {
     u_long since_last = 0;
     u_long val;
-    
+
     /* 100: turn TimeTicks into seconds */
     since_last = (reader->sample_time - reader->old_sample_time) / 100;
 
@@ -133,6 +151,11 @@ render_label(Reader *reader)
 				reader->label,
 				reader->sample,
 				reader->unit);
+    }
+
+    /* pretty print Uptime */
+    if (reader->asn1_type == ASN_TIMETICKS) {
+	return strdup_uptime (reader->sample_n);
     }
 
     if (reader->delta)
@@ -173,7 +196,7 @@ render_info(Reader *reader)
 	    ( (since_last < 1) ? 1 : since_last ) /
 	    ( (reader->divisor == 0) ? 1 : reader->divisor );
 
-    return g_strdup_printf ("%s '%s' %ld (%ld s: %ld) %s  (snmp://%s@%s:%d/%s) Uptime: %d d %d h %d m",
+    return g_strdup_printf ("%s '%s' %ld (%ld s: %ld) %s  (snmp://%s@%s:%d/%s) Uptime: %dd %d:%d",
 			    reader->label,
 			    reader->sample,
 			    reader->sample_n,
@@ -247,27 +270,27 @@ snmp_probe(gchar *peer, gint port, gchar *community)
     /* transform interesting OIDs */
     sysDescr_length = MAX_OID_LEN;
     if (!snmp_parse_oid("system.sysDescr.0", sysDescr, &sysDescr_length))
-	    printf("error parsing oid\n");
+	    printf("error parsing oid: system.sysDescr.0\n");
 
     sysObjectID_length = MAX_OID_LEN;
     if (!snmp_parse_oid("system.sysObjectID.0", sysObjectID, &sysObjectID_length))
-	    printf("error parsing oid\n");
+	    printf("error parsing oid: system.sysObjectID.0\n");
 
     sysUpTime_length = MAX_OID_LEN;
     if (!snmp_parse_oid("system.sysUpTime.0", sysUpTime, &sysUpTime_length))
-	    printf("error parsing oid\n");
+	    printf("error parsing oid: system.sysUpTime.0\n");
 
     sysContact_length = MAX_OID_LEN;
     if (!snmp_parse_oid("system.sysContact.0", sysContact, &sysContact_length))
-	    printf("error parsing oid\n");
+	    printf("error parsing oid: system.sysContact.0\n");
 
     sysName_length = MAX_OID_LEN;
     if (!snmp_parse_oid("system.sysName.0", sysName, &sysName_length))
-	    printf("error parsing oid\n");
+	    printf("error parsing oid: system.sysName.0\n");
 
     sysLocation_length = MAX_OID_LEN;
     if (!snmp_parse_oid("system.sysLocation.0", sysLocation, &sysLocation_length))
-	    printf("error parsing oid\n");
+	    printf("error parsing oid: system.sysLocation.0\n");
 
     /* initialize session to default values */
     snmp_sess_init( &session );
@@ -454,6 +477,12 @@ snmp_input(int op,
 	    reader->sample = result;
 	    reader->sample_n = result_n;
 	    reader->sample_time = time;
+
+	    if (strcmp(reader->oid_str, "sysUpTime.0") == 0) {
+	        reader->asn1_type = ASN_TIMETICKS;
+	        reader->sample_n = time;
+		reader->sample=  strdup_uptime (time);
+	    }
 	}
     }
     return 1;
@@ -553,7 +582,7 @@ simpleSNMPsend(struct snmp_session *session,
     uptime_length = MAX_OID_LEN;
     if (!snmp_parse_oid("system.sysUpTime.0",
 			uptime, &uptime_length)) {
-	    printf("error parsing oid\n");
+	    printf("error parsing oid: system.sysUpTime.0\n");
     }
     snmp_add_null_var(pdu, uptime, uptime_length);
 
@@ -565,8 +594,11 @@ simpleSNMPsend(struct snmp_session *session,
 
     snmp_send(session, pdu);
 }
- 
 
+
+/* GKrellM interface */
+ 
+static Monitor *mon;
 static Reader *readers;
 static GtkWidget *main_vbox;
 
@@ -622,6 +654,15 @@ update_plugin()
 		    g_free(text);
 		}
 	    } else {
+		    if ((GK.timer_ticks % reader->delay) == 0)
+			    if (reader->chart != NULL)
+			    {
+				    gkrellm_store_chartdata(reader->chart, 0, reader->sample_n);
+				    gkrellm_draw_chartdata(reader->chart);
+				    gkrellm_draw_chart_to_screen(reader->chart);
+			    }
+
+		    /* if there are changes update label */
 		if ( !reader->old_sample || strcmp(reader->sample,
 						   reader->old_sample) ||
 		     (reader->sample_n != reader->old_sample_n) ) {
@@ -637,6 +678,7 @@ update_plugin()
 		    text = render_info(reader);
 		    gtk_tooltips_set_tip(reader->tooltip, reader->panel->drawing_area, text, "");
 		    gtk_tooltips_enable(reader->tooltip);
+
 		    g_free(text);
 		    reader->old_sample_n = reader->sample_n;
 		    reader->old_sample_time = reader->sample_time;
@@ -678,14 +720,38 @@ panel_expose_event(GtkWidget *widget, GdkEventExpose *ev)
     for (reader = readers; reader ; reader = reader->next)
         if (widget == reader->panel->drawing_area) {
 
-	  gdk_draw_pixmap(widget->window,
-			  widget->style->fg_gc[GTK_WIDGET_STATE (widget)],
-			  reader->panel->pixmap, ev->area.x, ev->area.y,
-			  ev->area.x, ev->area.y,
-			  ev->area.width, ev->area.height);
+	    gdk_draw_pixmap(widget->window,
+			    widget->style->fg_gc[GTK_WIDGET_STATE (widget)],
+			    reader->panel->pixmap,
+			    ev->area.x, ev->area.y, ev->area.x, ev->area.y,
+			    ev->area.width, ev->area.height);
 	}
     return FALSE;
 }
+
+static gint
+chart_expose_event(GtkWidget *widget, GdkEventExpose *ev)
+{
+    Reader *reader;
+
+    for (reader = readers; reader ; reader = reader->next)
+        if (widget == reader->panel->drawing_area) {
+
+	    gdk_draw_pixmap(widget->window,
+			    widget->style->fg_gc[GTK_WIDGET_STATE (widget)],
+			    reader->chart->pixmap,
+			    ev->area.x, ev->area.y, ev->area.x, ev->area.y,
+			    ev->area.width, ev->area.height);
+	}
+    return FALSE;
+}
+
+static void
+cb_chart_click(GtkWidget *widget, GdkEventButton *event, gpointer data)
+	{
+		if (event->button == 3)
+			gkrellm_chartconfig_window_create(data);
+	}
 
 static void
 create_reader(GtkWidget *vbox, Reader *reader, gint first_create)
@@ -694,6 +760,42 @@ create_reader(GtkWidget *vbox, Reader *reader, gint first_create)
     Style           *style;
     //    GdkImlibImage   *krell_image;
     gchar *text;
+
+
+
+    if (first_create)
+	    reader->chart = gkrellm_chart_new0();
+
+    gkrellm_set_chart_height_default(reader->chart, 20);
+
+    gkrellm_chart_create(vbox, mon, reader->chart, &(reader->chart_config));
+
+    reader->chart_data = gkrellm_add_default_chartdata(reader->chart, "Plugin Data");
+    
+    gkrellm_monotonic_chartdata(reader->chart_data, FALSE);
+
+    gkrellm_set_chartdata_draw_style_default(reader->chart_data, CHARTDATA_LINE);
+    gkrellm_set_chartdata_flags(reader->chart_data, CHARTDATA_ALLOW_HIDE);
+
+    gkrellm_alloc_chartdata(reader->chart);
+
+    if (first_create)
+    {
+	    gtk_signal_connect(GTK_OBJECT(reader->chart->drawing_area),
+			       "expose_event", (GtkSignalFunc) chart_expose_event, NULL);
+	    gtk_signal_connect(GTK_OBJECT(reader->chart->drawing_area),
+			       "button_press_event", (GtkSignalFunc) cb_chart_click, reader->chart);
+    }
+    else
+    {
+	    gkrellm_draw_chartdata(reader->chart);
+	    gkrellm_draw_chart_to_screen(reader->chart);
+    }
+
+
+
+
+
 
     if (first_create)
         reader->panel = gkrellm_panel_new0();
@@ -722,7 +824,8 @@ create_reader(GtkWidget *vbox, Reader *reader, gint first_create)
     /* Build the configured panel with a background image and pack it into
     |  the vbox assigned to this monitor.
     */
-    gkrellm_create_panel(vbox, reader->panel, gkrellm_bg_meter_image(DEFAULT_STYLE));
+//dep:    gkrellm_create_panel(vbox, reader->panel, gkrellm_bg_meter_image(DEFAULT_STYLE));
+    gkrellm_panel_create(vbox, mon, reader->panel);
     gkrellm_monitor_height_adjust(reader->panel->h);
 
     if (first_create) {
@@ -762,7 +865,7 @@ destroy_reader(Reader *reader)
 */
 
   gkrellm_monitor_height_adjust( - reader->panel->h);
-  gkrellm_destroy_panel(reader->panel);
+  gkrellm_panel_destroy(reader->panel);
   //  gtk_widget_destroy(reader->vbox);
   g_free(reader);
 }
@@ -857,7 +960,7 @@ load_plugin_config(gchar *arg)
 	if (!snmp_parse_oid(reader->oid_str,
 			    reader->objid, &reader->objid_length)) {
 //FIXME:
-	    printf("error parsing oid\n");
+	    printf("error parsing oid: %s\n", reader->oid_str);
 	}
 
 	if (n > 7) {
@@ -921,7 +1024,7 @@ apply_plugin_config()
       if (!snmp_parse_oid(reader->oid_str,
 			  reader->objid, &reader->objid_length)) {
 //FIXME:
-	  printf("error parsing oid\n");
+	  printf("error parsing oid: %s\n", reader->oid_str);
       }
 
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
@@ -1387,7 +1490,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
 
 static Monitor  plugin_mon  =
         {
-        "SNMP",                /* Name, for config tab.        */
+        PLUGIN_CONFIG_NAME,    /* Name, for config tab.        */
         0,                     /* Id,  0 if a plugin           */
         create_plugin,         /* The create_plugin() function */
         update_plugin,         /* The update_plugin() function */
@@ -1419,5 +1522,6 @@ init_plugin(void)
 
     init_mib();
     
+    mon = &plugin_mon;
     return &plugin_mon;
 }
