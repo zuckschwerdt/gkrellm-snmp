@@ -199,6 +199,10 @@ Thanks to:
  Peter Herz <peterh@connectnet.com>
  (suggestions on divisor/scaling)
 
+ Ben Winslow <rain@bluecherry.net>
+ (fixed a bug in clist handling)
+
+
 AUTHOR AND WEBPAGE:
 ===================
 

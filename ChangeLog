@@ -1,6 +1,9 @@
 
 GKrellM_SNMP Changelog:
 
+0.16 (2001-04-03)
+- fixed a major bug (Ben Winslow)
+
 0.15 (2001-03-29)
 - fixed extended ASN1 types.
 - delta monitoring. (eg. monitor packet counters instead of gauges)

@@ -60,7 +60,7 @@
 
  
 #define SNMP_PLUGIN_MAJOR_VERSION 0
-#define SNMP_PLUGIN_MINOR_VERSION 15
+#define SNMP_PLUGIN_MINOR_VERSION 16
 
 #define PLUGIN_CONFIG_KEYWORD   "snmp_monitor"
 
@@ -843,7 +843,6 @@ cb_enter(GtkWidget *widget)
   buf[i++] = entry_get_alpha_text(&freq_spin);
   buf[i++] = "yes"; // GTK_TOGGLE_BUTTON(active_button)->active ? "yes" : "no";
   buf[i++] = GTK_TOGGLE_BUTTON(delta_button)->active ? "yes" : "no";
-  buf[i] = NULL;
 
   /* validate we have input */
   if (!*(buf[1]) || !*(buf[2]) || !*(buf[3]) || !*(buf[4]))
@@ -923,7 +922,7 @@ static gchar    *plugin_info_text =
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin 0.15\n"
+   "SNMP plugin 0.16\n"
    "GKrellM SNMP monitor Plugin\n\n"
    "Copyright (C) 2000-2001 Christian W. Zuckschwerdt\n"
    "zany@triq.net\n\n"
@@ -1079,7 +1078,6 @@ create_plugin_tab(GtkWidget *tab_vbox)
 	    buf[i++] = g_strdup_printf("%d", reader->delay);
 	    buf[i++] = reader->active ? "yes" : "no";
 	    buf[i++] = reader->delta ? "yes" : "no";
-	    buf[i] = NULL;
 	    row = gtk_clist_append(GTK_CLIST(reader_clist), buf);
 	  }
 

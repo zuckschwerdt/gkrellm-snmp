@@ -5,7 +5,7 @@ GTK_CONFIG = gtk-config
 IMLIB_CONFIG = imlib-config
 SYSLIB = -lsnmp
 # we need lib crypto if libsnmp has privacy support.
-SYSLIB += -lcrypto
+SYSLIB += -lcrypto -L/usr/local/ssl/lib -L/usr/ssl/lib
 
 # FreeBSD
 #GTK_CONFIG = gtk12-config
