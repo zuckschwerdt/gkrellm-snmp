@@ -27,6 +27,8 @@
 |
 */
 
+/* In case of SNMP trouble: #define DEBUG_SNMP */
+
 #include <stdio.h>
 #include <sys/types.h>
 
@@ -37,6 +39,9 @@
 #include <ucd-snmp/snmp.h>
 #include <ucd-snmp/snmp_api.h>
 #include <ucd-snmp/snmp_client.h>
+#ifdef DEBUG_SNMP
+#include <ucd-snmp/snmp_debug.h>
+#endif /* DEBUG_SNMP */
 
 #include <sys/time.h>
 
@@ -53,7 +58,7 @@
 
  
 #define SNMP_PLUGIN_MAJOR_VERSION 0
-#define SNMP_PLUGIN_MINOR_VERSION 13
+#define SNMP_PLUGIN_MINOR_VERSION 14
 
 #define PLUGIN_CONFIG_KEYWORD   "snmp_monitor"
 
@@ -80,6 +85,35 @@ struct Reader {
 } ;
 
 
+/*
+ * snmp_parse_args.c
+ */
+
+oid
+*snmp_parse_oid(const char *argv,
+		oid *root,
+		size_t *rootlen)
+{
+  size_t savlen = *rootlen;
+  /* printf("parse_oid: read_objid\n"); */
+  if (read_objid(argv,root,rootlen)) {
+    return root;
+  }
+  *rootlen = savlen;
+  /* printf("parse_oid: get_node\n"); */
+  if (get_node(argv,root,rootlen)) {
+    return root;
+  }
+  *rootlen = savlen;
+  /* printf("parse_oid: wildly parsing\n"); */
+  if (get_wild_node(argv,root,rootlen)) {
+    return root;
+  }
+  return NULL;
+}
+
+
+         
 int
 snmp_input(int op,
 	   struct snmp_session *session,
@@ -413,12 +447,13 @@ destroy_reader(Reader *reader)
 
   g_free(reader->old_sample);
 
+  /* can't free snmp session. may be there are pending snmp_reads! */
+/*
   if (reader->session)
     snmp_close(reader->session);
   g_free(reader->session->callback_magic);
-
-  /* can't free snmp session. may be there are pending snmp_reads! */
-  //  g_free(reader->session);
+  g_free(reader->session);
+*/
 
   gkrellm_monitor_height_adjust( - reader->panel->h);
   gkrellm_destroy_panel(reader->panel);
@@ -491,8 +526,11 @@ load_plugin_config(gchar *arg)
 	dup_string(&reader->oid_str, bufo);
 
 	reader->objid_length = MAX_OID_LEN;
-//	get_module_node(oid_str, "ANY", objid, &objid_length);
-	read_objid(reader->oid_str, reader->objid, &reader->objid_length);
+	if (!snmp_parse_oid(reader->oid_str,
+			    reader->objid, &reader->objid_length)) {
+//FIXME:
+	    printf("error parsing oid\n");
+	}
 
 	if (n > 7) {
 	    dup_string(&reader->unit, bufu);
@@ -551,8 +589,11 @@ apply_plugin_config()
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, 4, &name);
       dup_string(&reader->oid_str, name);
       reader->objid_length = MAX_OID_LEN;
-//      get_module_node(oid_str, "ANY", objid, &objid_length);
-      read_objid(reader->oid_str, reader->objid, &reader->objid_length);
+      if (!snmp_parse_oid(reader->oid_str,
+			  reader->objid, &reader->objid_length)) {
+//FIXME:
+	  printf("error parsing oid\n");
+      }
 
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, 5, &name);
       dup_string(&reader->unit, name);
@@ -762,7 +803,7 @@ static gchar    *plugin_info_text =
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin 0.13\n"
+   "SNMP plugin 0.14\n"
    "GKrellM SNMP monitor Plugin\n\n"
    "Copyright (C) 2000-2001 Christian W. Zuckschwerdt\n"
    "zany@triq.net\n\n"
@@ -970,7 +1011,12 @@ init_plugin(void)
 {
     readers = NULL;
 
-    init_mib();
+#ifdef DEBUG_SNMP
+    debug_register_tokens("all");
+    snmp_set_do_debugging(1);
+#endif /* DEBUG_SNMP */
 
+    init_mib();
+    
     return &plugin_mon;
 }

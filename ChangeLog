@@ -1,6 +1,10 @@
 
 GKrellM_SNMP Changelog:
 
+0.14 (2001-02-02)
+- Symbolic OIDs are working.
+- work-around : early freeing of snmp session caused errors
+
 0.13 (2001-01-23)
 - Failed DNS lookups won't harm GKrellM anymore.
 

@@ -53,50 +53,60 @@ Some example:
 
 The ambiente temperature sensor for Oldenburg i.O., Germany
 (see http://www.PMNET.uni-oldenburg.de/temperatur.php3)
+is world readable
 
-is world readable using the following pseudo URL
-snmp://public@134.106.172.2:161/.1.3.6.1.4.1.2021.8.1.101.1
+ Peer: 134.106.172.2  Port: 161  Community: public 
+ OID: extOutput.1 (= .1.3.6.1.4.1.2021.8.1.101.1 from UCD-SNMP-MIB)
 
-That is:
- SNMP peer "134.106.172.2" (kyle.pmnet.uni-oldenburg.de)
- SNMP port "161" (that's the default)
- SNMP community name "public"
- SNMP oid ".1.3.6.1.4.1.2021.8.1.101.1"
-
+If you have the needed MIB you can use the symbolic OID from. The name
+is unambiguous but only available if you have the MIB installed.
 
 (2)
 
 Server CPU load using a string ranging from 0.00 to 1.00
+(e.g. the load factor for the first cpu on PMNET's Stan )
 
-snmp://public@134.106.120.1:161/.1.3.6.1.4.1.2021.10.1.3.1
-(Thats the load factor for PMNET's Stan)
+ Peer: 134.106.120.1  Port: 161  Community: public
+ OID: laLoad.1 (= .1.3.6.1.4.1.2021.10.1.3.1 from UCD-SNMP-MIB)
 
 (3)
 
 Server CPU load using integer variable ranging from 0 to 100
+(e.g. the percentile load for the first cpu on PMNET's Kyle)
 
-snmp://public@134.106.172.2:161/.1.3.6.1.4.1.2021.10.1.5.1
-(Thats the percentile load on PMNET's Kyle)
+ Peer: 134.106.172.2  Port: 161  Community: public
+ OID: laLoadInt.1 (= .1.3.6.1.4.1.2021.10.1.5.1 from UCD-SNMP-MIB)
+
+
+You can convert the symbolic OID to numbers and vice-versa with
+snmptranslate:
+
+$ snmptranslate -m all -IR laLoadInt.1
+.1.3.6.1.4.1.2021.10.1.5.1
+
+$ snmptranslate -m all -OnS .1.3.6.1.4.1.2021.10.1.5.1
+UCD-SNMP-MIB::laLoadInt.1
 
 
 More interessting OIDs:
 =======================
 - Chasis inlet temperature (tested on cisco7204VXR)
+  CISCO-SMI::ciscoMgmt.13.1.3.1.3.1
  .1.3.6.1.4.1.9.9.13.1.3.1.3.1
 
 - Dominik Winter found the following OID's in Cisco's Vendor-MIB
   (works for his cisco-2514 w/ IOS Version 11.2(5))
 
-  locIfInBitsSec  inbound traffic measured in bit/s
+  locIfInBitsSec.n  inbound traffic measured in bit/s
   .1.3.6.1.4.1.9.2.2.1.1.6.<interface_nr>
 
-  locIfOutBitsSec  outbound traffic measured in bit/s
+  locIfOutBitsSec.n  outbound traffic measured in bit/s
   .1.3.6.1.4.1.9.2.2.1.1.8.<interface_nr>
 
-  locIfInPktsSec  inbound traffic measured in pkts/s
+  locIfInPktsSec.n  inbound traffic measured in pkts/s
   .1.3.6.1.4.1.9.2.2.1.1.7.<interface_nr>
 
-  locIfOutPktsSec  outbound traffic measured in pkts/s
+  locIfOutPktsSec.n  outbound traffic measured in pkts/s
   .1.3.6.1.4.1.9.2.2.1.1.9.<interface_nr>
 
   avgBusy1  CPU-load sampled over 1 minute
@@ -110,6 +120,7 @@ Be always sure to prepend the leading dot "." it's much like the
 root "/" in path names.
 Mostly there is a trailing ".0" do not omit it -- it selects the first
 row (E.g. there could be more that just one value).
+You can specify the cpu or interface appending a .1 or .2 and so on.
 
 
 Call for features!
