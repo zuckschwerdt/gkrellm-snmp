@@ -42,8 +42,8 @@
 #include <gkrellm/gkrellm.h>
 
  
-#define VOLUME_MAJOR_VERSION 0
-#define VOLUME_MINOR_VERSION 6
+#define SNMP_PLUGIN_MAJOR_VERSION 0
+#define SNMP_PLUGIN_MINOR_VERSION 8
 
 #define PLUGIN_CONFIG_KEYWORD   "snmp_monitor"
 
@@ -51,20 +51,20 @@
 typedef struct Reader Reader;
 
 struct Reader {
-  Reader           *next;
-  gchar           *label;
-  gchar            *peer;
-  gint              port;
-  gchar       *community;
-  gchar         *oid_str;
-  oid objid[MAX_OID_LEN];
-  size_t    objid_length;
-  gchar            *unit;
-  gint             delay;
-  gboolean        active;
-  gchar       *old_sample;
-  struct snmp_session *session;
-  Panel           *panel;
+	Reader			*next;
+	gchar			*label;
+	gchar			*peer;
+	gint			port;
+	gchar			*community;
+	gchar			*oid_str;
+	oid			objid[MAX_OID_LEN];
+	size_t			objid_length;
+	gchar			*unit;
+	gint			delay;
+	gboolean		active;
+	gchar			*old_sample;
+	struct snmp_session	*session;
+	Panel			*panel;
 } ;
 
 
@@ -81,10 +81,15 @@ snmp_input(int op,
     if (op == RECEIVED_MESSAGE) {
 
         if (pdu->errstat == SNMP_ERR_NOERROR) {
+
+	  /*
+	  fprintf(stderr, "recv from: %s type: %d\n",
+		  session->peername, pdu->variables->type);
+	  */
             for(vars = pdu->variables; vars; vars = vars->next_variable) {
-                if (vars->type == ASN_OCTET_STR) /* value is a string */
+                if (vars->type & ASN_OCTET_STR) /* value is a string */
                     result = g_strndup(vars->val.string, vars->val_len);
-                if (vars->type == ASN_INTEGER) /* value is a integer */
+                if (vars->type & ASN_INTEGER) /* value is a integer */
                     result = g_strdup_printf("%ld", *vars->val.integer);
             }
                               
@@ -208,6 +213,7 @@ update_plugin()
 {
   Reader *reader;
   gchar  *text;
+  gint clock_style_id;
   //  Krell       *k;
   //  gint i;
 
@@ -253,7 +259,15 @@ update_plugin()
       
       //      gkrellm_update_krell(panel, k, i);
 
-      gkrellm_draw_panel_label( reader->panel, GK.bg_panel_image[CLOCK_STYLE]);
+      /* Bill mentioned this change for upcoming 0.10.0 */
+#if (VERSION_MAJOR <= 0)&&(VERSION_MINOR <= 9)
+      clock_style_id = CLOCK_STYLE;
+#else
+      clock_style_id = gkrellm_lookup_meter_style_id(CLOCK_STYLE_NAME);
+#endif
+
+      gkrellm_draw_panel_label( reader->panel,
+				gkrellm_bg_panel_image(clock_style_id) );
       gkrellm_draw_layers(reader->panel);
     }
 
@@ -338,7 +352,7 @@ destroy_reader(Reader *reader)
   /* can't free snmp session. may be there are pending snmp_reads! */
   //  g_free(reader->session);
 
-  GK.monitor_height -= reader->panel->h;
+  gkrellm_monitor_height_adjust( - reader->panel->h);
   gkrellm_destroy_panel(reader->panel);
   //  gtk_widget_destroy(reader->vbox);
   g_free(reader);
@@ -667,7 +681,7 @@ static gchar    *plugin_info_text =
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin 0.7\n"
+   "SNMP plugin 0.8\n"
    "GKrellM SNMP monitor Plugin\n\n"
    "Copyright (C) 2000 Christian W. Zuckschwerdt\n"
    "zany@triq.net\n\n"

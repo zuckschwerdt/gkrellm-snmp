@@ -7,6 +7,14 @@ Homepage:  http://triq.net/gkrellm/
 A plugin for GKrellM, that let's you monitor SNMP vars.
 
 
+Prerequisites:
+===============
+You need a SNMP library to run this plugin.
+You also need the header (include) files for building.
+Tested with UCD-SNMP >= 4.0.0 ( http://ucd-snmp.ucdavis.edu/ ).
+(If you want to try -old- CMU-SNMP, please mail some feedback).
+
+
 Compiling:
 ===========
 
@@ -30,11 +38,13 @@ If you have trouble compiling the plugin. Make sure you have gtk 1.2 and
 gkrellm >= 0.9.8 and you've installed the gkrellm header files in
 /usr/include/gkrellm or /usr/local/include/gkrellm. If you have placed the
 header files in some other dir, edit GKRELLM_INCLUDE in the Makefile
+
  
 Bugs:
 =====
 I do consider this version stable.
 please mail any problems/bugs to me...
+
 
 Some example:
 =============
@@ -54,19 +64,25 @@ That is:
  SNMP oid ".1.3.6.1.4.1.2021.8.1.101.1"
 
 
-2)
+(2)
 
 Server CPU load using a string ranging from 0.00 to 1.00
 
 snmp://public@134.106.120.1:161/.1.3.6.1.4.1.2021.10.1.3.1
 (Thats the load factor for PMNET's Stan)
 
-3)
+(3)
 
 Server CPU load using integer variable ranging from 0 to 100
 
 snmp://public@134.106.172.2:161/.1.3.6.1.4.1.2021.10.1.5.1
 (Thats the percentile load on PMNET's Kyle)
+
+
+More interessting OIDs:
+=======================
+- Chasis inlet temperature (tested on cisco7204VXR)
+ .1.3.6.1.4.1.9.9.13.1.3.1.3.1
 
 
 Call for features!
@@ -114,12 +130,19 @@ Thanks to:
  Eike Bernhardt <teefax@pmnet.uni-oldenburg.de>
  (Makefile improvements, Testing on FreeBSD)
 
+ Bill Wilson <billw@wt.net>
+ (valuable feedback and last but not least making GKrellM!)
+
+- Fixed ASN.1 return type strangeness with cisco7204VXR router    
+  Stefan Raab <stefan.raab@nextel.com>
+  (bug report and cisco7204VXR access)
+
 
 AUTHOR AND WEBPAGE:
 ===================
 
 Christian W. Zuckschwerdt  <zany@triq.net>
-GKrellM SNMP can soon be found at http://triq.net/
-and hopefully at GKrellM homepage
+GKrellM SNMP can soon be found at http://triq.net/gkrellm/
+and also at GKrellM homepage http://web.wt.net/~billw/gkrellm/gkrellm.html
 
 

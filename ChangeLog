@@ -1,5 +1,11 @@
 GKrellM_SNMP Changelog:
 
+0.8: (2000-06-05)
+- Bill mentioned some change for upcoming 0.10.0
+- Fixed ASN.1 return type strangeness with cisco7204VXR router
+  thanks to Stefan Raab <stefan.raab@nextel.com> who
+  brought that to my attention and provided hardware access
+
 0.7: (2000-06-04)
 - clean up's for first public release!
 
