@@ -39,16 +39,17 @@ please mail any problems/bugs to me...
 Some example:
 =============
 
-1)
+(1)
 
 The ambiente temperature sensor for Oldenburg i.O., Germany
 (see http://www.PMNET.uni-oldenburg.de/temperatur.php3)
 
 is world readable using the following pseudo URL
-snmp://public@134.106.172.2/.1.3.6.1.4.1.2021.8.1.101.1
+snmp://public@134.106.172.2:161/.1.3.6.1.4.1.2021.8.1.101.1
 
 That is:
  SNMP peer "134.106.172.2" (kyle.pmnet.uni-oldenburg.de)
+ SNMP port "161" (that's the default)
  SNMP community name "public"
  SNMP oid ".1.3.6.1.4.1.2021.8.1.101.1"
 
@@ -57,14 +58,14 @@ That is:
 
 Server CPU load using a string ranging from 0.00 to 1.00
 
-snmp://public@134.106.120.1/.1.3.6.1.4.1.2021.10.1.3.1
+snmp://public@134.106.120.1:161/.1.3.6.1.4.1.2021.10.1.3.1
 (Thats the load factor for PMNET's Stan)
 
 3)
 
 Server CPU load using integer variable ranging from 0 to 100
 
-snmp://public@134.106.172.2/.1.3.6.1.4.1.2021.10.1.5.1
+snmp://public@134.106.172.2:161/.1.3.6.1.4.1.2021.10.1.5.1
 (Thats the percentile load on PMNET's Kyle)
 
 

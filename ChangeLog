@@ -1,23 +1,26 @@
 GKrellM_SNMP Changelog:
 
-0.6:
+0.7: (2000-06-04)
+- clean up's for first public release!
+
+0.6: (2000-06-01)
 - fixed some string allocation error (uninitialized)
 - finaly made SNMP request asynchronos!
 
-0.5:
+0.5: (2000-05-11)
 - different panel styles for active/errored monitors
 
-0.4:
-- Fixed the Segfault - that was way to easy...
+0.4: (2000-05-09)
+- Fixed a major Segfault - that was way to easy...
 
-0.3:
+0.3: (2000-05-07)
 - Makefile fix for FreeBSD
 - Makefile fix concerning missing PLUGIN_DIR
 - Slider now disabled (will be optional sometime)
 - You can now have multiple SNMP monitors
 
-0.2:
+0.2: (2000-05-06)
 - added ChangeLog, README, Makefile
 
-0.1:
-- proof of concept, testing release
+0.1: (2000-05-05)
+- proof of concept, test release

@@ -62,58 +62,55 @@ struct Reader {
   gchar            *unit;
   gint             delay;
   gboolean        active;
-  char       *old_sample;
-  char     *fresh_sample;
+  gchar       *old_sample;
   struct snmp_session *session;
   Panel           *panel;
 } ;
 
 
-int snmp_input(int op,
-               struct snmp_session *session,
-               int reqid,
-               struct snmp_pdu *pdu,
-               void *magic)
+int
+snmp_input(int op,
+	   struct snmp_session *session,
+	   int reqid,
+	   struct snmp_pdu *pdu,
+	   void *magic)
 {
     struct variable_list *vars;
-    char *result = NULL;
+    gchar *result = NULL;
 
     if (op == RECEIVED_MESSAGE) {
 
-      if (pdu->errstat == SNMP_ERR_NOERROR) {
-        for(vars = pdu->variables; vars; vars = vars->next_variable) {
-          if (vars->type == ASN_OCTET_STR) /* value is a string */
-            result = g_strndup(vars->val.string, vars->val_len);
-          if (vars->type == ASN_INTEGER) /* value is a integer */
-            result = g_strdup_printf("%ld", *vars->val.integer);
-        }
+        if (pdu->errstat == SNMP_ERR_NOERROR) {
+            for(vars = pdu->variables; vars; vars = vars->next_variable) {
+                if (vars->type == ASN_OCTET_STR) /* value is a string */
+                    result = g_strndup(vars->val.string, vars->val_len);
+                if (vars->type == ASN_INTEGER) /* value is a integer */
+                    result = g_strdup_printf("%ld", *vars->val.integer);
+            }
                               
-      } else {
-        fprintf(stderr, "Error in packet\nReason: %s\n",
-                snmp_errstring(pdu->errstat));
+        } else {
+            fprintf(stderr, "SNMP Error in packet\nReason: %s\n",
+		    snmp_errstring(pdu->errstat));
 
-        if (pdu->errstat == SNMP_ERR_NOSUCHNAME){
-          fprintf(stderr, "This name doesn't exist: ");
+	    if (pdu->errstat == SNMP_ERR_NOSUCHNAME) {
+  	        fprintf(stderr, "SNMP This name doesn't exist: ");
+            }
         }
-      }
 
-      dup_string(session->callback_magic, result);
-      g_free(result);
-
-// besser ?
-      /*
-      if (session->callback_magic)
-	g_free(session->callback_magic);
-      session->callback_magic = result;
-      */
+	/* we use session's callback magic to pass back a *gchar */
+	if (session->callback_magic)
+	    g_free(session->callback_magic);
+	session->callback_magic = result;
 
     } else if (op == TIMED_OUT){
-        fprintf(stderr, "Timeout: This shouldn't happen!\n");
+        fprintf(stderr, "SNMP Timeout: This shouldn't happen!\n");
+	session->callback_magic = NULL;
     }
     return 1;
 }
 
-void simpleSNMPupdate()
+void
+simpleSNMPupdate()
 {
     int count;
     int numfds, block;
@@ -130,7 +127,6 @@ void simpleSNMPupdate()
 	/*        if (block == 1)
 		  tvp = NULL; */ /* block without timeout */
     count = select(numfds, &fdset, 0, 0, tvp);
-    // gettimeofday(&Now, 0);
     if (count > 0){
         snmp_read(&fdset);
     } else switch(count){
@@ -146,41 +142,46 @@ void simpleSNMPupdate()
 }
 
 struct snmp_session
-*simpleSNMPopen(char *peername, char *community,
-		     char **destination)
+*simpleSNMPopen(gchar *peername,
+		gint port,
+		gchar *community)
 {
     struct snmp_session session, *ss;
 
-    /* initialize session to default values */
+    /*
+     * initialize session to default values
+     */
     snmp_sess_init( &session );
 
     session.version = SNMP_VERSION_1;
     session.community = community;
     session.community_len = strlen(community);
     session.peername = peername;
+    session.remote_port = port;
 
     session.retries = SNMP_DEFAULT_RETRIES;
     session.timeout = SNMP_DEFAULT_TIMEOUT;
 
     session.callback = snmp_input;
-    session.callback_magic = destination;
+    session.callback_magic = NULL; /* will be used as (* gchar) */
     session.authenticator = NULL;
-
 
     /* 
      * Open an SNMP session.
      */
     ss = snmp_open(&session);
     if (ss == NULL){
-      snmp_sess_perror("snmpget", &session);
-      exit(1);
+        snmp_sess_perror("snmpget", &session);
+        exit(1);
     }
 
     return ss;
 }
 
-void simpleSNMPsend(struct snmp_session *session,
-		   oid *name, size_t name_length)
+void
+simpleSNMPsend(struct snmp_session *session,
+	       oid *name,
+	       size_t name_length)
 {
     struct snmp_pdu *pdu;
 
@@ -206,6 +207,7 @@ static void
 update_plugin()
 {
   Reader *reader;
+  gchar  *text;
   //  Krell       *k;
   //  gint i;
 
@@ -220,55 +222,58 @@ update_plugin()
 
       if (! reader->session)
 	  reader->session = simpleSNMPopen(reader->peer,
-		    reader->community,
-		    &reader->fresh_sample);
-
+					   reader->port,
+					   reader->community);
 
       /* Send new SNMP requests */
-      if ((GK.timer_ticks % 100) == 0)
+      if ((GK.timer_ticks % reader->delay) == 0)
 	  simpleSNMPsend(reader->session,
 			 reader->objid,
 			 reader->objid_length);
 
 
-      if (strcmp(reader->fresh_sample, reader->old_sample) != 0)
-      {
-	g_free(reader->old_sample);
-	reader->old_sample = g_strconcat (reader->label,
-					  reader->fresh_sample,
-					  reader->unit, NULL);
-	reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE);
-	//	i = atoi(p);
+      if (reader->session->callback_magic) {
+	  if ( !reader->old_sample || strcmp(reader->session->callback_magic,
+					     reader->old_sample) ) {
+	    g_free(reader->old_sample);
+	    reader->old_sample = g_strdup(reader->session->callback_magic);
+
+	    text = g_strconcat (reader->label,
+				reader->session->callback_magic,
+				reader->unit, NULL);
+	    dup_string(&reader->panel->label->string, text);
+	    //	i = atoi(text);
+	  }
+	  reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE);
+
       } else {
-	reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
-	//	i = -1;
+	  reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
+	  //	i = -1;
       }
       
       //      gkrellm_update_krell(panel, k, i);
 
-      //      reader->panel->label->string = text;
-      dup_string(&reader->panel->label->string, reader->old_sample);
-
       gkrellm_draw_panel_label( reader->panel, GK.bg_panel_image[CLOCK_STYLE]);
       gkrellm_draw_layers(reader->panel);
     }
+
 }
 
 static gint
 panel_expose_event(GtkWidget *widget, GdkEventExpose *ev)
 {
-  Reader *reader;
+    Reader *reader;
 
-  for (reader = readers; reader ; reader = reader->next)
-    if (widget == reader->panel->drawing_area) {
+    for (reader = readers; reader ; reader = reader->next)
+        if (widget == reader->panel->drawing_area) {
 
-      gdk_draw_pixmap(widget->window,
-		      widget->style->fg_gc[GTK_WIDGET_STATE (widget)],
-		      reader->panel->pixmap, ev->area.x, ev->area.y,
-		      ev->area.x, ev->area.y,
-		      ev->area.width, ev->area.height);
-    }
-  return FALSE;
+	  gdk_draw_pixmap(widget->window,
+			  widget->style->fg_gc[GTK_WIDGET_STATE (widget)],
+			  reader->panel->pixmap, ev->area.x, ev->area.y,
+			  ev->area.x, ev->area.y,
+			  ev->area.width, ev->area.height);
+	}
+    return FALSE;
 }
 
 static void
@@ -317,15 +322,21 @@ destroy_reader(Reader *reader)
 {
   if (!reader)
     return;
+
   g_free(reader->label);
   g_free(reader->peer);
   g_free(reader->community);
   g_free(reader->oid_str);
   g_free(reader->unit);
 
+  g_free(reader->old_sample);
+
   if (reader->session)
     snmp_close(reader->session);
-  g_free(reader->session);
+  g_free(reader->session->callback_magic);
+
+  /* can't free snmp session. may be there are pending snmp_reads! */
+  //  g_free(reader->session);
 
   GK.monitor_height -= reader->panel->h;
   gkrellm_destroy_panel(reader->panel);
@@ -340,10 +351,9 @@ create_plugin(GtkWidget *vbox, gint first_create)
 
   main_vbox = vbox;
 
-  for (reader = readers; reader ; reader = reader->next)
-    {
+  for (reader = readers; reader ; reader = reader->next) {
       create_reader(vbox, reader, first_create);
-    }
+  }
 }
 
 /* Config section */
@@ -355,7 +365,7 @@ static GtkWidget        *community_entry;
 static GtkWidget        *oid_entry;
 static GtkWidget        *unit_entry;
 static GtkWidget        *reader_clist;
-static gint             selected_row;
+static gint             selected_row = -1;
 static gint             list_modified;
 
 
@@ -364,9 +374,10 @@ save_plugin_config(FILE *f)
 {
   Reader *reader;
   for (reader = readers; reader ; reader = reader->next)
-    fprintf(f, "%s %s snmp://%s@%s/%s %s\n",
+    fprintf(f, "%s %s snmp://%s@%s:%d/%s %s\n",
 	    PLUGIN_CONFIG_KEYWORD,
-	    reader->label, reader->community, reader->peer,
+	    reader->label, reader->community,
+	    reader->peer, reader->port,
 	    reader->oid_str, reader->unit);
 }
 
@@ -378,37 +389,37 @@ load_plugin_config(gchar *arg)
   gchar   proto[CFG_BUFSIZE], bufl[CFG_BUFSIZE];
   gchar   bufc[CFG_BUFSIZE], bufp[CFG_BUFSIZE];
   gchar   bufo[CFG_BUFSIZE], bufu[CFG_BUFSIZE];
-  gint    n;
+  gint    n, port=0;
 
   reader = g_new0(Reader, 1); 
 
-  n = sscanf(arg, "%s %[^:]://%[^@]@%[^/]/%s %[^\n]",
-	     bufl, proto, bufc, bufp, bufo, bufu);
-  if (n >= 5)
+  n = sscanf(arg, "%s %[^:]://%[^@]@%[^:]:%d/%s %[^\n]",
+	     bufl, proto, bufc, bufp, &port, bufo, bufu);
+  if (n >= 6)
     {
       if (g_strcasecmp(proto, "snmp") == 0) {
 	dup_string(&reader->label, bufl);
 	dup_string(&reader->community, bufc);
 	dup_string(&reader->peer, bufp);
+	reader->port = port;
 	dup_string(&reader->oid_str, bufo);
-	reader->old_sample = g_strdup("empty");
-	reader->fresh_sample = g_strdup("empty");
-	reader->session = NULL;
 
 	reader->objid_length = MAX_OID_LEN;
 //	get_module_node(oid_str, "ANY", objid, &objid_length);
 	read_objid(reader->oid_str, reader->objid, &reader->objid_length);
 
-	if (n == 6) {
+	if (n == 7) {
 	  dup_string(&reader->unit, bufu);
 	}
 
+	reader->delay = 100; // bah. Needs to be configurable!
       }
 
-      if (!readers) readers = reader;
+      if (!readers)
+	  readers = reader;
       else { 
-	for (nreader = readers; nreader->next ; nreader = nreader->next);
-	nreader->next = reader;
+ 	  for (nreader = readers; nreader->next ; nreader = nreader->next);
+	  nreader->next = reader;
       }
 
     }
@@ -418,8 +429,8 @@ static void
 apply_plugin_config()
 {
   Reader *reader, *nreader;
-  gchar    *name;
-  gint    row;
+  gchar  *name;
+  gint   row;
 
   if (!list_modified)
     return;
@@ -439,6 +450,9 @@ apply_plugin_config()
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, 1, &name);
       dup_string(&reader->peer, name);
 
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, 2, &name);
+      reader->port = atoi(name);
+
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, 3, &name);
       dup_string(&reader->community, name);
 
@@ -451,10 +465,14 @@ apply_plugin_config()
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, 5, &name);
       dup_string(&reader->unit, name);
 
-      if (!readers) readers = reader;
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, 6, &name);
+      reader->delay = atoi(name);
+
+      if (!readers)
+          readers = reader;
       else { 
-	for (nreader = readers; nreader->next ; nreader = nreader->next);
-	nreader->next = reader;
+	  for (nreader = readers; nreader->next ; nreader = nreader->next);
+	  nreader->next = reader;
       }
       create_reader(main_vbox, reader, 1);
     }
@@ -467,6 +485,7 @@ reset_entries()
 {
   gtk_entry_set_text(GTK_ENTRY(label_entry), "");
   gtk_entry_set_text(GTK_ENTRY(peer_entry), "");
+  gtk_entry_set_text(GTK_ENTRY(port_entry), "");
   //  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button1), FALSE);
   gtk_entry_set_text(GTK_ENTRY(community_entry), "");
   gtk_entry_set_text(GTK_ENTRY(oid_entry), "");
@@ -489,7 +508,7 @@ cb_clist_selected(GtkWidget *clist, gint row, gint column,
   gtk_entry_set_text(GTK_ENTRY(peer_entry), s);
 
   gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
-  //  gtk_entry_set_text(GTK_ENTRY(port_entry), s);
+  gtk_entry_set_text(GTK_ENTRY(port_entry), s);
 
   gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
   gtk_entry_set_text(GTK_ENTRY(community_entry), s);
@@ -563,13 +582,13 @@ cb_enter(GtkWidget *widget)
   i = 0;
   buf[i++] = entry_get_alpha_text(&label_entry);
   buf[i++] = entry_get_alpha_text(&peer_entry);
-  buf[i++] = "161"; // entry_get_alpha_text(port_entry);
+  buf[i++] = entry_get_alpha_text(&port_entry);
   buf[i++] = entry_get_alpha_text(&community_entry);
   n = i;
   buf[i++] = entry_get_alpha_text(&oid_entry);
   buf[i++] = entry_get_alpha_text(&unit_entry);
   buf[i++] = "100"; // entry_get_alpha_text(umount_entry);
-  buf[i++] = "no"; // GTK_TOGGLE_BUTTON(mounting_button)->active ? "yes" : "no";
+  buf[i++] = "yes"; // GTK_TOGGLE_BUTTON(mounting_button)->active ? "yes" : "no";
   buf[i] = NULL;
 
   if (*(buf[0]) == '\0' || *(buf[1]) == '\0')     /* validate we have input */
@@ -608,13 +627,47 @@ cb_delete(GtkWidget *widget)
 
 static gchar    *plugin_info_text =
 "This configuration tab is for the SNMP monitor plugin.\n"
-"Put any documentation here to explain your plugin.\n"
-"You could also add your name and email address in case\n"
-"of any user questions.\n"
+"\n"
+"Adding new SNMP readers should be fairly easy.\n"
+"Peer, Port, Community and OID are the respective SNMP parameters.\n"
+"Label is a unique name that gets prepended to your reader.\n"
+"Unit is just a string thats appended to your reader.\n"
+"\n"
+"Some examples:\n"
+"\n"
+"(1)\n"
+"The ambiente temperature sensor for Oldenburg i.O., Germany\n"
+" (see http://www.PMNET.uni-oldenburg.de/temperatur.php3)\n"
+"is world readable using the following pseudo URL\n"
+"snmp://public@134.106.172.2:161/.1.3.6.1.4.1.2021.8.1.101.1\n"
+"\n"
+"That is:\n"
+" SNMP peer '134.106.172.2' (kyle.pmnet.uni-oldenburg.de)\n"
+" SNMP port '161' (that's the default)\n"
+" SNMP community name 'public'\n"
+" SNMP oid '.1.3.6.1.4.1.2021.8.1.101.1'\n"
+"\n"
+"Resonable Label/Unit would be 'Temp.' / '°C'\n"
+"\n"
+"(2)\n"
+"\n"
+"Server CPU load using a string ranging from 0.00 to 1.00\n"
+"\n"
+"snmp://public@134.106.120.1:161/.1.3.6.1.4.1.2021.10.1.3.1\n"
+"(Thats the load factor for PMNET's Stan)\n"
+"\n"
+"(3)\n"
+"\n"
+"Server CPU load using integer variable ranging from 0 to 100\n"
+"\n"
+"snmp://public@134.106.172.2:161/.1.3.6.1.4.1.2021.10.1.5.1\n"
+"(Thats the percentile load on PMNET's Kyle)\n"
+"\n"
+"please mail any problems/questions to me...\n"
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin 0.6\n"
+   "SNMP plugin 0.7\n"
    "GKrellM SNMP monitor Plugin\n\n"
    "Copyright (C) 2000 Christian W. Zuckschwerdt\n"
    "zany@triq.net\n\n"
@@ -755,11 +808,11 @@ create_plugin_tab(GtkWidget *tab_vbox)
 	    i = 0;
 	    buf[i++] = reader->label;
 	    buf[i++] = reader->peer;
-	    buf[i++] = "161"; // reader->port;
+	    buf[i++] = g_strdup_printf("%d", reader->port);
 	    buf[i++] = reader->community;
 	    buf[i++] = reader->oid_str;
 	    buf[i++] = reader->unit;
-	    buf[i++] = "100"; // reader->delay;
+	    buf[i++] = g_strdup_printf("%d", reader->delay);
 	    buf[i++] = reader->active ? "yes" : "no";
 	    buf[i] = NULL;
 	    row = gtk_clist_append(GTK_CLIST(reader_clist), buf);
@@ -784,7 +837,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
 	gtk_notebook_append_page(GTK_NOTEBOOK(tabs), text,
 				 gtk_label_new("About"));
 
-        }
+}
 
 
 
@@ -814,29 +867,9 @@ static Monitor  plugin_mon  =
 Monitor *
 init_plugin(void)
 {
-  readers = NULL;
+    readers = NULL;
 
-  init_mib();
+    init_mib();
 
-  return &plugin_mon;
+    return &plugin_mon;
 }
-
-
-/*
-int main(int argc, char *argv[])
-{
-
-    char *peername = "134.106.172.2";
-    char *community = "public";
-    char *objid = ".1.3.6.1.4.1.2021.8.1.101.1";
-
-    printf(":%s:", simpleSNMPget(peername, community, objid));
-
-    return 0;
-}
-*/
-
-
-
-
-
