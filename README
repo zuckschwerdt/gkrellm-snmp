@@ -15,6 +15,8 @@ Tested with UCD-SNMP >= 4.1 ( http://ucd-snmp.ucdavis.edu/ ).
 (If you want to try -old- CMU-SNMP or UCD-SNMP <= 4.0, please be so kind
  and mail some feedback).
 
+This means for e.g. Redhat (7.1) you need to install ucd-smp as well as
+ucd-snmp-devel!
 
 Compiling:
 ===========
@@ -201,6 +203,9 @@ Thanks to:
 
  Ben Winslow <rain@bluecherry.net>
  (fixed a bug in clist handling)
+ 
+ Lasse Aagren <lasse@aagren.org>
+ (reported config file reading error)
 
 
 AUTHOR AND WEBPAGE:

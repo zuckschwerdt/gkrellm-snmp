@@ -1,10 +1,15 @@
 
 GKrellM_SNMP Changelog:
 
-0.17 (2001-04-  )
+ 0.18 (2001-06-  )
+ - TODO: probe button and capability display
+ - TODO: instance mapping
+ - TODO: meters
+
+0.17 (2001-05-09)
 - added button for auto scale feature
 - added divisor feature
-- TODO: probe button
+- empty field proof configuration file reading
 
 0.16 (2001-04-03)
 - fixed a major bug (Ben Winslow)
