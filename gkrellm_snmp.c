@@ -1,29 +1,29 @@
 /* SNMP reader plugin for GKrellM 
-|  Copyright (C) 2000 Christian W. Zuckschwerdt <zany@triq.net>
+|  Copyright (C) 2000,2001  Christian W. Zuckschwerdt <zany@triq.net>
 |
-|  Author:   Christian W. Zuckschwerdt   <zany@triq.net>
+|  Author:  Christian W. Zuckschwerdt  <zany@triq.net>  http://triq.net/
 |  Latest versions might be found at:  http://gkrellm.net/
 |
-|  This program is free software which I release under the GNU General Public
-|  License. You may redistribute and/or modify this program under the terms
-|  of that license as published by the Free Software Foundation; either
-|  version 2 of the License, or (at your option) any later version.
+| This program is free software; you can redistribute it and/or
+| modify it under the terms of the GNU General Public License
+| as published by the Free Software Foundation; either version 2
+| of the License, or (at your option) any later version.
 |
-|  This program is distributed in the hope that it will be useful,
-|  but WITHOUT ANY WARRANTY; without even the implied warranty of
-|  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-|  GNU General Public License for more details.
-|
-|  To get a copy of the GNU General Puplic License,  write to the
-|  Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-|                                  Boston, MA 02111-1307, USA.
+| This program is distributed in the hope that it will be useful,
+| but WITHOUT ANY WARRANTY; without even the implied warranty of
+| MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+| GNU General Public License for more details.
+
+| You should have received a copy of the GNU General Public License
+| along with this program; if not, write to the Free Software
+| Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 /* Installation:
 |
 |     make
 |     make install
-|      or without using root-privileges
+|      or without using superuser privileges
 |     make install-user
 |
 */
@@ -51,16 +51,8 @@
 #include <gkrellm/gkrellm.h>
 
 
-#if (VERSION_MAJOR <= 1)&&(VERSION_MINOR <= 0)&&(VERSION_REV <= 3)
-
-#else
- #define entry_get_alpha_text gkrellm_entry_get_text
- #define dup_string gkrellm_dup_string
-#endif
-
- 
 #define SNMP_PLUGIN_MAJOR_VERSION 0
-#define SNMP_PLUGIN_MINOR_VERSION 16
+#define SNMP_PLUGIN_MINOR_VERSION 17
 
 #define PLUGIN_CONFIG_KEYWORD   "snmp_monitor"
 
@@ -77,9 +69,12 @@ struct Reader {
 	oid			objid[MAX_OID_LEN];
 	size_t			objid_length;
 	gchar			*unit;
+	gint			divisor;
+	gboolean		scale;
 	gint			delay;
 	gboolean		active;
 	gboolean		delta;
+	gint			asn1_type;
 	gchar			*sample;
 	u_long			sample_n;
 	u_long			sample_time;
@@ -95,7 +90,7 @@ struct Reader {
 
 
 /*
- * scale num to string (FIXME)
+ * caller needs to free the returned gchar*
  */
 
 gchar *
@@ -109,6 +104,80 @@ scale(u_long num)
 	return g_strdup_printf("%ldK", num/1024);
     return g_strdup_printf("%ld", num);
 }
+
+gchar *
+render_error(Reader *reader)
+{
+    return g_strdup_printf ("%s %s (snmp://%s@%s:%d/%s)",
+			    reader->label,
+			    reader->session ? reader->error : "Unknown host",
+			    reader->community,
+			    reader->peer, reader->port,
+			    reader->oid_str );
+}
+
+gchar *
+render_label(Reader *reader)
+{
+    u_long since_last = 0;
+    u_long val;
+    
+    /* 100: turn TimeTicks into seconds */
+    since_last = (reader->sample_time - reader->old_sample_time) / 100;
+
+    /* short-cut if only binary data present */
+    if (reader->asn1_type == ASN_OCTET_STR) {
+	return g_strdup_printf ("%s %s%s",
+				reader->label,
+				reader->sample,
+				reader->unit);
+    }
+
+    if (reader->delta)
+	val = (reader->sample_n - reader->old_sample_n) /
+		( (since_last < 1) ? 1 : since_last ) /
+		( (reader->divisor == 0) ? 1 : reader->divisor );
+    else
+	val = reader->sample_n / 
+		( (reader->divisor == 0) ? 1 : reader->divisor );
+
+    if (reader->scale)
+	return g_strdup_printf ("%s %s%s",
+				reader->label,
+				scale(val),
+				reader->unit);
+    else
+	return g_strdup_printf ("%s %ld%s",
+				reader->label,
+				val,
+				reader->unit);
+}
+
+gchar *
+render_info(Reader *reader)
+{
+    u_long since_last = 0;
+    u_long delta;
+    
+    /* 100: turn TimeTicks into seconds */
+    since_last = (reader->sample_time - reader->old_sample_time) / 100;
+
+    delta = (reader->sample_n - reader->old_sample_n) /
+	    ( (since_last < 1) ? 1 : since_last ) /
+	    ( (reader->divisor == 0) ? 1 : reader->divisor );
+
+    return g_strdup_printf ("%s '%s' %ld (%ld s: %ld) %s  (snmp://%s@%s:%d/%s)",
+			    reader->label,
+			    reader->sample,
+			    reader->sample_n,
+			    since_last,
+			    delta,
+			    reader->unit, 
+			    reader->community,
+			    reader->peer, reader->port,
+			    reader->oid_str );
+}
+
 
 /*
  * snmp_parse_args.c
@@ -147,10 +216,12 @@ snmp_input(int op,
 	   void *magic)
 {
     struct variable_list *vars;
+    gint asn1_type = 0;
     gchar *result = NULL;
+    u_long result_n = 0;
+
     gchar *error = NULL;
     u_long time = 0;
-    u_long result_n = 0;
     Reader *reader = NULL;
 
     if (op == RECEIVED_MESSAGE) {
@@ -168,13 +239,15 @@ snmp_input(int op,
 		    time = *vars->val.integer;
 		    break;
 		case ASN_OCTET_STR: /* value is a string */
+		    asn1_type = ASN_OCTET_STR;
 		    result = g_strndup(vars->val.string, vars->val_len);
 		    break;
 		case ASN_INTEGER: /* value is a integer */
 		case ASN_COUNTER: /* use as if it were integer */
 		case ASN_UNSIGNED: /* use as if it were integer */
+		    asn1_type = ASN_INTEGER;
 		    result_n = *vars->val.integer;
-		    result = scale(*vars->val.integer);
+		    result = g_strdup_printf("%ld", *vars->val.integer);
 		    break;
 		default:
 		    fprintf(stderr, "recv unknown ASN type: %d - please report to zany@triq.net\n", vars->type);
@@ -211,6 +284,7 @@ snmp_input(int op,
 	    reader->old_sample = reader->sample;
 	    reader->old_sample-time = reader->sample_time;
 	    */
+	    reader->asn1_type = asn1_type;
 	    reader->sample = result;
 	    reader->sample_n = result_n;
 	    reader->sample_time = time;
@@ -332,7 +406,6 @@ update_plugin()
     Reader *reader;
     gchar  *text;
     gint clock_style_id;
-    u_long delta, divisor;
     //  Krell       *k;
     //  gint i;
 
@@ -350,13 +423,11 @@ update_plugin()
 					     reader->port,
 					     reader->community,
 					     reader);
-	    if (! reader->session)
-		reader->old_error = g_strdup_printf ("%s %s (snmp://%s@%s:%d/%s)",
-					    reader->label,
-					    "Unknown host",
-					    reader->community,
-					    reader->peer, reader->port,
-					    reader->oid_str );
+	    if (! reader->session) {
+		text = reader->old_error;
+		reader->old_error = render_error(reader);
+		g_free(text);
+	    }
 	}
 
 	/* Send new SNMP requests */
@@ -371,15 +442,11 @@ update_plugin()
 	        if (!reader->old_error ||
 		    strcmp(reader->error,
 			   reader->old_error) ) {
-		    g_free(reader->old_error);
+		    text = reader->old_error;
 		    reader->old_error = g_strdup(reader->error);
+		    g_free(text);
 		    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE);
-		    text = g_strdup_printf ("%s %s (snmp://%s@%s:%d/%s)",
-					    reader->label,
-					    (gchar*)reader->error,
-					    reader->community,
-					    reader->peer, reader->port,
-					    reader->oid_str );
+		    text = render_error(reader);
 		    gtk_tooltips_set_tip(reader->tooltip, reader->panel->drawing_area, text, "");
 		    gtk_tooltips_enable(reader->tooltip);
 		    g_free(text);
@@ -389,39 +456,15 @@ update_plugin()
 						   reader->old_sample) ||
 		     (reader->sample_n != reader->old_sample_n) ) {
 
-		    divisor = (reader->sample_time -
-			       reader->old_sample_time) / 100;
-		    /* 100: turn TimeTicks into seconds */
-
-		    if (divisor < 1) divisor = 1;
-		    delta = (reader->sample_n - reader->old_sample_n) /
-			    divisor;
-
 		    g_free(reader->old_sample);
 		    reader->old_sample = g_strdup(reader->sample);
 
-		    if (reader->delta) {
-			text = g_strdup_printf ("%s %s%s",
-						reader->label,
-						scale(delta),
-						reader->unit);
-		    } else {
-			text = g_strconcat (reader->label, " ",
-					    reader->sample,
-					    reader->unit, NULL);
-		    }
-		    dup_string(&reader->panel->label->string, text);
+		    text = render_label(reader);
+		    gkrellm_dup_string(&reader->panel->label->string, text);
 		    g_free(text);
 		    //	i = atoi(text);
 
-		    text = g_strdup_printf ("%s %s %s  (snmp://%s@%s:%d/%s) %ld",
-					    reader->label,
-					    (gchar*)reader->sample,
-					    reader->unit, 
-					    reader->community,
-					    reader->peer, reader->port,
-					    reader->oid_str,
-					    delta );
+		    text = render_info(reader);
 		    gtk_tooltips_set_tip(reader->tooltip, reader->panel->drawing_area, text, "");
 		    gtk_tooltips_enable(reader->tooltip);
 		    g_free(text);
@@ -575,11 +618,14 @@ static GtkWidget        *oid_entry;
 static GtkWidget        *unit_entry;
 static GtkObject        *freq_spin_adj;
 static GtkWidget        *freq_spin;
+static GtkObject        *div_spin_adj;
+static GtkWidget        *div_spin;
 static GtkWidget        *delta_button;
+static GtkWidget        *scale_button;
 static GtkWidget        *reader_clist;
 static gint             selected_row = -1;
 static gint             list_modified;
-#define CLIST_WIDTH 9
+#define CLIST_WIDTH 11
 
 #define	 STR_DELIMITERS	" \t"
 
@@ -592,12 +638,13 @@ save_plugin_config(FILE *f)
   for (reader = readers; reader ; reader = reader->next) {
       label = g_strdelimit(g_strdup(reader->label), STR_DELIMITERS, '_');
       unit = g_strdelimit(g_strdup(reader->unit), STR_DELIMITERS, '_');
-      fprintf(f, "%s %s snmp://%s@%s:%d/%s %s %d %d\n",
+      fprintf(f, "%s %s snmp://%s@%s:%d/%s %s %d %d %d %d\n",
 	      PLUGIN_CONFIG_KEYWORD,
 	      label, reader->community,
 	      reader->peer, reader->port,
 	      reader->oid_str, unit,
-	      reader->delay, reader->delta);
+	      reader->delay, reader->delta,
+	      reader->divisor, reader->scale);
       g_free(label);
       g_free(unit);
   }
@@ -611,26 +658,26 @@ load_plugin_config(gchar *arg)
   gchar   proto[CFG_BUFSIZE], bufl[CFG_BUFSIZE];
   gchar   bufc[CFG_BUFSIZE], bufp[CFG_BUFSIZE];
   gchar   bufo[CFG_BUFSIZE], bufu[CFG_BUFSIZE];
-  gint    n, port=0, delay=0, delta=0;
+  gint    n;
 
   reader = g_new0(Reader, 1); 
 
-  n = sscanf(arg, "%s %[^:]://%[^@]@%[^:]:%d/%s %s %d %d",
-	     bufl, proto, bufc, bufp, &port, bufo, bufu, &delay, &delta);
+  n = sscanf(arg, "%s %[^:]://%[^@]@%[^:]:%d/%s %s %d %d %d %d",
+	     bufl, proto, bufc, bufp, &reader->port, bufo, bufu,
+	     &reader->delay, &reader->delta,
+	     &reader->divisor, &reader->scale);
   if (n >= 6)
     {
       if (g_strcasecmp(proto, "snmp") == 0) {
-	dup_string(&reader->label, bufl);
-	dup_string(&reader->community, bufc);
-	dup_string(&reader->peer, bufp);
-	reader->port = port;
-	if (delay > 0)
-	    reader->delay = delay;
-	else
+	gkrellm_dup_string(&reader->label, bufl);
+	gkrellm_dup_string(&reader->community, bufc);
+	gkrellm_dup_string(&reader->peer, bufp);
+	if (reader->delay < 10)
 	    reader->delay = 100;
-	reader->delta = delta;
+	if (reader->divisor == 0)
+	    reader->divisor = 1;
 
-	dup_string(&reader->oid_str, bufo);
+	gkrellm_dup_string(&reader->oid_str, bufo);
 
 	reader->objid_length = MAX_OID_LEN;
 	if (!snmp_parse_oid(reader->oid_str,
@@ -640,9 +687,9 @@ load_plugin_config(gchar *arg)
 	}
 
 	if (n > 7) {
-	    dup_string(&reader->unit, bufu);
+	    gkrellm_dup_string(&reader->unit, bufu);
 	} else {
-	    dup_string(&reader->unit, "");
+	    gkrellm_dup_string(&reader->unit, "");
 	}
 
 	g_strdelimit(reader->label, "_", ' ');
@@ -683,19 +730,19 @@ apply_plugin_config()
       reader = g_new0(Reader, 1);
 
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
-      dup_string(&reader->label, name);
+      gkrellm_dup_string(&reader->label, name);
 
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
-      dup_string(&reader->peer, name);
+      gkrellm_dup_string(&reader->peer, name);
 
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
       reader->port = atoi(name);
 
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
-      dup_string(&reader->community, name);
+      gkrellm_dup_string(&reader->community, name);
 
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
-      dup_string(&reader->oid_str, name);
+      gkrellm_dup_string(&reader->oid_str, name);
       reader->objid_length = MAX_OID_LEN;
       if (!snmp_parse_oid(reader->oid_str,
 			  reader->objid, &reader->objid_length)) {
@@ -704,16 +751,22 @@ apply_plugin_config()
       }
 
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
-      dup_string(&reader->unit, name);
+      gkrellm_dup_string(&reader->unit, name);
 
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
       reader->delay = atoi(name);
 
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
-      reader->active = (strcmp(name, "yes") == 0) ? TRUE : FALSE;
+      reader->divisor = atoi(name);
 
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
       reader->delta = (strcmp(name, "yes") == 0) ? TRUE : FALSE;
+
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
+      reader->scale = (strcmp(name, "yes") == 0) ? TRUE : FALSE;
+
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
+      reader->active = (strcmp(name, "yes") == 0) ? TRUE : FALSE;
 
       if (!readers)
           readers = reader;
@@ -733,12 +786,14 @@ reset_entries()
   gtk_entry_set_text(GTK_ENTRY(label_entry), "");
   gtk_entry_set_text(GTK_ENTRY(peer_entry), "");
   // gtk_entry_set_text(GTK_ENTRY(port_entry), "");
-  // gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button1), FALSE);
   gtk_entry_set_text(GTK_ENTRY(community_entry), "");
   gtk_entry_set_text(GTK_ENTRY(oid_entry), "");
   gtk_entry_set_text(GTK_ENTRY(unit_entry), "");
   // gtk_entry_set_text(GTK_ENTRY(freq_entry), "");
+  // gtk_entry_set_text(GTK_ENTRY(div_entry), "");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(delta_button), FALSE);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(scale_button), TRUE);
+  // gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(active_button), FALSE);
 }
 
 
@@ -773,12 +828,19 @@ cb_clist_selected(GtkWidget *clist, gint row, gint column,
   gtk_entry_set_text(GTK_ENTRY(freq_spin), s);
 
   gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
-  state = (strcmp(s, "yes") == 0) ? TRUE : FALSE;
-  //  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(mounting_button), state);
+  gtk_entry_set_text(GTK_ENTRY(div_spin), s);
 
   gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
   state = (strcmp(s, "yes") == 0) ? TRUE : FALSE;
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(delta_button), state);
+
+  gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
+  state = (strcmp(s, "yes") == 0) ? TRUE : FALSE;
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(scale_button), state);
+
+  gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
+  state = (strcmp(s, "yes") == 0) ? TRUE : FALSE;
+  //  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(active_button), state);
 
   selected_row = row;
 }
@@ -834,15 +896,17 @@ cb_enter(GtkWidget *widget)
   gint            i;
 
   i = 0;
-  buf[i++] = entry_get_alpha_text(&label_entry);
-  buf[i++] = entry_get_alpha_text(&peer_entry);
-  buf[i++] = entry_get_alpha_text(&port_spin);
-  buf[i++] = entry_get_alpha_text(&community_entry);
-  buf[i++] = entry_get_alpha_text(&oid_entry);
-  buf[i++] = entry_get_alpha_text(&unit_entry);
-  buf[i++] = entry_get_alpha_text(&freq_spin);
-  buf[i++] = "yes"; // GTK_TOGGLE_BUTTON(active_button)->active ? "yes" : "no";
+  buf[i++] = gkrellm_entry_get_text(&label_entry);
+  buf[i++] = gkrellm_entry_get_text(&peer_entry);
+  buf[i++] = gkrellm_entry_get_text(&port_spin);
+  buf[i++] = gkrellm_entry_get_text(&community_entry);
+  buf[i++] = gkrellm_entry_get_text(&oid_entry);
+  buf[i++] = gkrellm_entry_get_text(&unit_entry);
+  buf[i++] = gkrellm_entry_get_text(&freq_spin);
+  buf[i++] = gkrellm_entry_get_text(&div_spin);
   buf[i++] = GTK_TOGGLE_BUTTON(delta_button)->active ? "yes" : "no";
+  buf[i++] = GTK_TOGGLE_BUTTON(scale_button)->active ? "yes" : "no";
+  buf[i++] = "yes"; // GTK_TOGGLE_BUTTON(active_button)->active ? "yes" : "no";
 
   /* validate we have input */
   if (!*(buf[1]) || !*(buf[2]) || !*(buf[3]) || !*(buf[4]))
@@ -922,7 +986,7 @@ static gchar    *plugin_info_text =
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin 0.16\n"
+   "SNMP plugin 0.17\n"
    "GKrellM SNMP monitor Plugin\n\n"
    "Copyright (C) 2000-2001 Christian W. Zuckschwerdt\n"
    "zany@triq.net\n\n"
@@ -933,7 +997,7 @@ static gchar    *plugin_about_text =
 static gchar *reader_title[CLIST_WIDTH] =
 { "Label", "Peer", "Port",
   "Community", "OID", "Unit",
-  "Freq", "Active", "Delta" };
+  "Freq", "Divisor", "Delta", "Scale", "Active" };
 
 static void
 create_plugin_tab(GtkWidget *tab_vbox)
@@ -987,9 +1051,6 @@ create_plugin_tab(GtkWidget *tab_vbox)
 	freq_spin = gtk_spin_button_new (GTK_ADJUSTMENT (freq_spin_adj), 1, 0);
 	gtk_box_pack_start(GTK_BOX(hbox),freq_spin,FALSE,FALSE,0);
 
-        delta_button = gtk_check_button_new_with_label("Delta");
-        gtk_box_pack_start(GTK_BOX(hbox),delta_button,FALSE,FALSE,0);
-
 	gtk_container_add(GTK_CONTAINER(vbox),hbox);
 	hbox = gtk_hbox_new(FALSE,0);
 
@@ -1012,7 +1073,21 @@ create_plugin_tab(GtkWidget *tab_vbox)
 	gtk_box_pack_start(GTK_BOX(hbox),unit_entry,FALSE,FALSE,0);
 
 	gtk_container_add(GTK_CONTAINER(vbox),hbox);
+	hbox = gtk_hbox_new(FALSE,0);
 
+	label = gtk_label_new("Divisor : ");
+	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
+	div_spin_adj = gtk_adjustment_new (1, 1, 1024, 1, 1, 1);
+	div_spin = gtk_spin_button_new (GTK_ADJUSTMENT (div_spin_adj), 1, 0);
+	gtk_box_pack_start(GTK_BOX(hbox),div_spin,FALSE,FALSE,0);
+
+        delta_button = gtk_check_button_new_with_label("Compute delta");
+        gtk_box_pack_start(GTK_BOX(hbox),delta_button,FALSE,FALSE,0);
+
+        scale_button = gtk_check_button_new_with_label("Auto scale");
+        gtk_box_pack_start(GTK_BOX(hbox),scale_button,FALSE,FALSE,0);
+
+	gtk_container_add(GTK_CONTAINER(vbox),hbox);
 
         hbox = gtk_hbox_new(FALSE, 3);
         gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 2);
@@ -1057,7 +1132,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
 	reader_clist = gtk_clist_new_with_titles(CLIST_WIDTH, reader_title);	
         gtk_clist_set_shadow_type (GTK_CLIST(reader_clist), GTK_SHADOW_OUT);
 	gtk_clist_set_column_width (GTK_CLIST(reader_clist), 1, 100);
-	gtk_clist_set_column_width (GTK_CLIST(reader_clist), 4, 200);
+	gtk_clist_set_column_width (GTK_CLIST(reader_clist), 4, 100);
 
         gtk_signal_connect(GTK_OBJECT(reader_clist), "select_row",
                         (GtkSignalFunc) cb_clist_selected, NULL);
@@ -1076,8 +1151,10 @@ create_plugin_tab(GtkWidget *tab_vbox)
 	    buf[i++] = reader->oid_str;
 	    buf[i++] = reader->unit;
 	    buf[i++] = g_strdup_printf("%d", reader->delay);
-	    buf[i++] = reader->active ? "yes" : "no";
+	    buf[i++] = g_strdup_printf("%d", reader->divisor);
 	    buf[i++] = reader->delta ? "yes" : "no";
+	    buf[i++] = reader->scale ? "yes" : "no";
+	    buf[i++] = reader->active ? "yes" : "no";
 	    row = gtk_clist_append(GTK_CLIST(reader_clist), buf);
 	  }
 

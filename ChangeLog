@@ -1,6 +1,11 @@
 
 GKrellM_SNMP Changelog:
 
+0.17 (2001-04-  )
+- added button for auto scale feature
+- added divisor feature
+- TODO: probe button
+
 0.16 (2001-04-03)
 - fixed a major bug (Ben Winslow)
 
