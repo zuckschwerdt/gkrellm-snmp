@@ -50,7 +50,7 @@
 
 #include <gkrellm/gkrellm.h>
 
-/* #define STREAM /* test for Lou Cephyr */
+#define STREAM /* test for Lou Cephyr */
 
 
 #define SNMP_PLUGIN_MAJOR_VERSION 0
@@ -108,18 +108,6 @@ scale(u_long num)
 }
 
 gchar *
-strdup_uptime (u_long time)
-{
-    gint up_d, up_h, up_m;
-
-    up_d = time/100/60/60/24;
-    up_h = (time/100/60/60) % 24;
-    up_m = (time/100/60) % 60;
-
-    return g_strdup_printf ("%dd %d:%d", up_d, up_h, up_m );
-}
-
-gchar *
 render_error(Reader *reader)
 {
     return g_strdup_printf ("%s %s (snmp://%s@%s:%d/%s)",
@@ -135,7 +123,7 @@ render_label(Reader *reader)
 {
     u_long since_last = 0;
     u_long val;
-
+    
     /* 100: turn TimeTicks into seconds */
     since_last = (reader->sample_time - reader->old_sample_time) / 100;
 
@@ -145,11 +133,6 @@ render_label(Reader *reader)
 				reader->label,
 				reader->sample,
 				reader->unit);
-    }
-
-    /* pretty print Uptime */
-    if (reader->asn1_type == ASN_TIMETICKS) {
-	return strdup_uptime (reader->sample_n);
     }
 
     if (reader->delta)
@@ -190,7 +173,7 @@ render_info(Reader *reader)
 	    ( (since_last < 1) ? 1 : since_last ) /
 	    ( (reader->divisor == 0) ? 1 : reader->divisor );
 
-    return g_strdup_printf ("%s '%s' %ld (%ld s: %ld) %s  (snmp://%s@%s:%d/%s) Uptime: %dd %d:%d",
+    return g_strdup_printf ("%s '%s' %ld (%ld s: %ld) %s  (snmp://%s@%s:%d/%s) Uptime: %d d %d h %d m",
 			    reader->label,
 			    reader->sample,
 			    reader->sample_n,
@@ -264,27 +247,27 @@ snmp_probe(gchar *peer, gint port, gchar *community)
     /* transform interesting OIDs */
     sysDescr_length = MAX_OID_LEN;
     if (!snmp_parse_oid("system.sysDescr.0", sysDescr, &sysDescr_length))
-	    printf("error parsing oid: system.sysDescr.0\n");
+	    printf("error parsing oid\n");
 
     sysObjectID_length = MAX_OID_LEN;
     if (!snmp_parse_oid("system.sysObjectID.0", sysObjectID, &sysObjectID_length))
-	    printf("error parsing oid: system.sysObjectID.0\n");
+	    printf("error parsing oid\n");
 
     sysUpTime_length = MAX_OID_LEN;
     if (!snmp_parse_oid("system.sysUpTime.0", sysUpTime, &sysUpTime_length))
-	    printf("error parsing oid: system.sysUpTime.0\n");
+	    printf("error parsing oid\n");
 
     sysContact_length = MAX_OID_LEN;
     if (!snmp_parse_oid("system.sysContact.0", sysContact, &sysContact_length))
-	    printf("error parsing oid: system.sysContact.0\n");
+	    printf("error parsing oid\n");
 
     sysName_length = MAX_OID_LEN;
     if (!snmp_parse_oid("system.sysName.0", sysName, &sysName_length))
-	    printf("error parsing oid: system.sysName.0\n");
+	    printf("error parsing oid\n");
 
     sysLocation_length = MAX_OID_LEN;
     if (!snmp_parse_oid("system.sysLocation.0", sysLocation, &sysLocation_length))
-	    printf("error parsing oid: system.sysLocation.0\n");
+	    printf("error parsing oid\n");
 
     /* initialize session to default values */
     snmp_sess_init( &session );
@@ -471,11 +454,6 @@ snmp_input(int op,
 	    reader->sample = result;
 	    reader->sample_n = result_n;
 	    reader->sample_time = time;
-
-	    if (strcmp(reader->oid_str, "sysUpTime.0") == 0)
-	        reader->asn1_type = ASN_TIMETICKS;
-	        reader->sample_n = time;
-		reader->sample=  strdup_uptime (time);
 	}
     }
     return 1;
@@ -575,7 +553,7 @@ simpleSNMPsend(struct snmp_session *session,
     uptime_length = MAX_OID_LEN;
     if (!snmp_parse_oid("system.sysUpTime.0",
 			uptime, &uptime_length)) {
-	    printf("error parsing oid: system.sysUpTime.0\n");
+	    printf("error parsing oid\n");
     }
     snmp_add_null_var(pdu, uptime, uptime_length);
 
@@ -879,7 +857,7 @@ load_plugin_config(gchar *arg)
 	if (!snmp_parse_oid(reader->oid_str,
 			    reader->objid, &reader->objid_length)) {
 //FIXME:
-	    printf("error parsing oid: %s\n", reader->oid_str);
+	    printf("error parsing oid\n");
 	}
 
 	if (n > 7) {
@@ -943,7 +921,7 @@ apply_plugin_config()
       if (!snmp_parse_oid(reader->oid_str,
 			  reader->objid, &reader->objid_length)) {
 //FIXME:
-	  printf("error parsing oid: %s\n", reader->oid_str);
+	  printf("error parsing oid\n");
       }
 
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
