@@ -38,3 +38,32 @@ notice this he checks his syslog output.
 
 -> candidate for some next release
    trap message could be viewed as bubble help (popup).
+
+
+Date: Sun, 13 Aug 2000 01:58:22 -0400
+From: Ben Winslow <rain@insane.loonybin.net>
+
+I just figured I'd throw you a few suggestions that I think would be nice
+for your gkrellm snmp plugin:
+
+Configurable update delays (it looks like you were planning to put this in
+but didn't have it completed for this release)
+->Done
+
+Putting the default snmp port in the port field would be nice for those
+of us who are forgetful and don't have any other fields in (I always have
+to grep snmp /etc/services :)
+-> Done
+
+A divisor would be nice, too.  For example, I'm monitoring interface usage
+on a router and the fields are given in bits/sec--It'd be handy if I could
+divide the result by 1000 and get the kilobits/sec as this would take up
+less room.
+
+Though I don't usually need them, I noticed that re-reading the config file
+will break if the descriptive text has a space in it.
+
+It'd also be nice to have a max limit that could be set either by hand or
+by a an snmp oid and then putting a krell (like underneat the 
+cpu/proc/disk/interface graphs) on the field.
+

@@ -84,6 +84,28 @@ More interessting OIDs:
 - Chasis inlet temperature (tested on cisco7204VXR)
  .1.3.6.1.4.1.9.9.13.1.3.1.3.1
 
+- Dominik Winter found the following OID's in Cisco's Vendor-MIB
+  (works for his cisco-2514 w/ IOS Version 11.2(5))
+
+  locIfInBitsSec  inbound traffic measured in bit/s
+  .1.3.6.1.4.1.9.2.2.1.1.6.<interface_nr>
+
+  locIfOutBitsSec  outbound traffic measured in bit/s
+  .1.3.6.1.4.1.9.2.2.1.1.8.<interface_nr>
+
+  locIfInPktsSec  inbound traffic measured in pkts/s
+  .1.3.6.1.4.1.9.2.2.1.1.7.<interface_nr>
+
+  locIfOutPktsSec  outbound traffic measured in pkts/s
+  .1.3.6.1.4.1.9.2.2.1.1.9.<interface_nr>
+
+  avgBusy1  CPU-load sampled over 1 minute
+  .1.3.6.1.4.1.9.2.1.57
+
+  avgBusy5 CPU-load sampled over 5 minutes
+  .1.3.6.1.4.1.9.2.1.58
+
+
 Be always sure to prepend the leading dot "." it's much like the
 root "/" in path names.
 Mostly there is a trailing ".0" do not omit it -- it selects the first

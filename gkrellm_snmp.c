@@ -77,6 +77,7 @@ snmp_input(int op,
 {
     struct variable_list *vars;
     gchar *result = NULL;
+    gint val;
 
     if (op == RECEIVED_MESSAGE) {
 
@@ -89,7 +90,15 @@ snmp_input(int op,
             for(vars = pdu->variables; vars; vars = vars->next_variable) {
                 if (vars->type & ASN_OCTET_STR) /* value is a string */
                     result = g_strndup(vars->val.string, vars->val_len);
-                if (vars->type & ASN_INTEGER) /* value is a integer */
+                if (vars->type & ASN_INTEGER) { /* value is a integer */
+		    result = g_strdup_printf("%ld", *vars->val.integer);
+  		    if (*vars->val.integer > 9000)
+		        result = g_strdup_printf("%ldK", *vars->val.integer/1024);
+  		    if (*vars->val.integer > 9000000)
+		        result = g_strdup_printf("%ldM", *vars->val.integer/1024/1024);
+		}
+                if (vars->type & ASN_BOOLEAN) /* value is a boolean */
+		  /* use as integer (tweak for Dominik Winter's cisco2514 */
                     result = g_strdup_printf("%ld", *vars->val.integer);
             }
                               
@@ -380,10 +389,13 @@ create_plugin(GtkWidget *vbox, gint first_create)
 
 static GtkWidget        *label_entry;
 static GtkWidget        *peer_entry;
-static GtkWidget        *port_entry;
+static GtkObject        *port_spin_adj;
+static GtkWidget        *port_spin;
 static GtkWidget        *community_entry;
 static GtkWidget        *oid_entry;
 static GtkWidget        *unit_entry;
+static GtkObject        *freq_spin_adj;
+static GtkWidget        *freq_spin;
 static GtkWidget        *reader_clist;
 static gint             selected_row = -1;
 static gint             list_modified;
@@ -394,11 +406,11 @@ save_plugin_config(FILE *f)
 {
   Reader *reader;
   for (reader = readers; reader ; reader = reader->next)
-    fprintf(f, "%s %s snmp://%s@%s:%d/%s %s\n",
+    fprintf(f, "%s %s snmp://%s@%s:%d/%s %s %d\n",
 	    PLUGIN_CONFIG_KEYWORD,
 	    reader->label, reader->community,
 	    reader->peer, reader->port,
-	    reader->oid_str, reader->unit);
+	    reader->oid_str, reader->unit, reader->delay);
 }
 
 static void
@@ -409,12 +421,12 @@ load_plugin_config(gchar *arg)
   gchar   proto[CFG_BUFSIZE], bufl[CFG_BUFSIZE];
   gchar   bufc[CFG_BUFSIZE], bufp[CFG_BUFSIZE];
   gchar   bufo[CFG_BUFSIZE], bufu[CFG_BUFSIZE];
-  gint    n, port=0;
+  gint    n, port=0, delay=0;
 
   reader = g_new0(Reader, 1); 
 
-  n = sscanf(arg, "%s %[^:]://%[^@]@%[^:]:%d/%s %[^\n]",
-	     bufl, proto, bufc, bufp, &port, bufo, bufu);
+  n = sscanf(arg, "%s %[^:]://%[^@]@%[^:]:%d/%s %s %d",
+	     bufl, proto, bufc, bufp, &port, bufo, bufu, &delay);
   if (n >= 6)
     {
       if (g_strcasecmp(proto, "snmp") == 0) {
@@ -422,18 +434,21 @@ load_plugin_config(gchar *arg)
 	dup_string(&reader->community, bufc);
 	dup_string(&reader->peer, bufp);
 	reader->port = port;
+	reader->delay = delay;
 	dup_string(&reader->oid_str, bufo);
 
 	reader->objid_length = MAX_OID_LEN;
 //	get_module_node(oid_str, "ANY", objid, &objid_length);
 	read_objid(reader->oid_str, reader->objid, &reader->objid_length);
 
-	if (n == 7) {
+	if (n >= 7) {
 	  dup_string(&reader->unit, bufu);
 	}
+	if (n != 8) {
+	  reader->delay = 100;
+	}
 
-	reader->delay = 100; // bah. Needs to be configurable!
-	//	reader->old_sample = "SNMP"; // be nice.
+	// reader->old_sample = "SNMP"; // be nice.
       }
 
       if (!readers)
@@ -506,11 +521,12 @@ reset_entries()
 {
   gtk_entry_set_text(GTK_ENTRY(label_entry), "");
   gtk_entry_set_text(GTK_ENTRY(peer_entry), "");
-  gtk_entry_set_text(GTK_ENTRY(port_entry), "");
-  //  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button1), FALSE);
+  // gtk_entry_set_text(GTK_ENTRY(port_entry), "");
+  // gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button1), FALSE);
   gtk_entry_set_text(GTK_ENTRY(community_entry), "");
   gtk_entry_set_text(GTK_ENTRY(oid_entry), "");
   gtk_entry_set_text(GTK_ENTRY(unit_entry), "");
+  // gtk_entry_set_text(GTK_ENTRY(freq_entry), "");
 }
 
 
@@ -529,7 +545,8 @@ cb_clist_selected(GtkWidget *clist, gint row, gint column,
   gtk_entry_set_text(GTK_ENTRY(peer_entry), s);
 
   gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
-  gtk_entry_set_text(GTK_ENTRY(port_entry), s);
+  gtk_entry_set_text(GTK_ENTRY(port_spin), s);
+  //  gtk_spin_button_get_value_as_int(GTK_SPINBUTTON(port_spin), 161);
 
   gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
   gtk_entry_set_text(GTK_ENTRY(community_entry), s);
@@ -541,7 +558,7 @@ cb_clist_selected(GtkWidget *clist, gint row, gint column,
   gtk_entry_set_text(GTK_ENTRY(unit_entry), s);
 
   gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
-  //  gtk_entry_set_text(GTK_ENTRY(freq_entry), s);
+  gtk_entry_set_text(GTK_ENTRY(freq_spin), s);
 
   gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
   state = (strcmp(s, "yes") == 0) ? TRUE : FALSE;
@@ -603,11 +620,11 @@ cb_enter(GtkWidget *widget)
   i = 0;
   buf[i++] = entry_get_alpha_text(&label_entry);
   buf[i++] = entry_get_alpha_text(&peer_entry);
-  buf[i++] = entry_get_alpha_text(&port_entry);
+  buf[i++] = entry_get_alpha_text(&port_spin);
   buf[i++] = entry_get_alpha_text(&community_entry);
   buf[i++] = entry_get_alpha_text(&oid_entry);
   buf[i++] = entry_get_alpha_text(&unit_entry);
-  buf[i++] = "100"; // entry_get_alpha_text(freq_entry);
+  buf[i++] = entry_get_alpha_text(&freq_spin);
   buf[i++] = "yes"; // GTK_TOGGLE_BUTTON(active_button)->active ? "yes" : "no";
   buf[i] = NULL;
 
@@ -649,6 +666,9 @@ static gchar    *plugin_info_text =
 "\n"
 "Adding new SNMP readers should be fairly easy.\n"
 "Peer, Port, Community and OID are the respective SNMP parameters.\n"
+"Whereas Port ist preselected with the default value 161.\n"
+"Freq sets the delay between updates of the reader value.\n"
+"It's measured in GKrellM ticks -- that's 1/10 seconds.\n"
 "Label is a unique name that gets prepended to your reader.\n"
 "Unit is just a string thats appended to your reader.\n"
 "\n"
@@ -666,7 +686,7 @@ static gchar    *plugin_info_text =
 " SNMP community name 'public'\n"
 " SNMP oid '.1.3.6.1.4.1.2021.8.1.101.1'\n"
 "\n"
-"Resonable Label/Unit would be 'Temp.' / '∞C'\n"
+"Resonable Label/Unit would be 'Temp.' / 'Å∞C'\n"
 "\n"
 "(2)\n"
 "\n"
@@ -686,7 +706,7 @@ static gchar    *plugin_info_text =
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin 0.8\n"
+   "SNMP plugin 0.10\n"
    "GKrellM SNMP monitor Plugin\n\n"
    "Copyright (C) 2000 Christian W. Zuckschwerdt\n"
    "zany@triq.net\n\n"
@@ -742,9 +762,15 @@ create_plugin_tab(GtkWidget *tab_vbox)
 
 	label = gtk_label_new("Port : ");
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
-	port_entry = gtk_entry_new();
-	gtk_entry_set_text(GTK_ENTRY(port_entry), "");
-	gtk_box_pack_start(GTK_BOX(hbox),port_entry,FALSE,FALSE,0);
+	port_spin_adj = gtk_adjustment_new (161, 1, 65535, 1, 10, 10);
+	port_spin = gtk_spin_button_new (GTK_ADJUSTMENT (port_spin_adj), 1, 0);
+	gtk_box_pack_start(GTK_BOX(hbox),port_spin,FALSE,FALSE,0);
+
+	label = gtk_label_new("Freq : ");
+	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
+	freq_spin_adj = gtk_adjustment_new (100, 10, 6000, 10, 100, 100);
+	freq_spin = gtk_spin_button_new (GTK_ADJUSTMENT (freq_spin_adj), 1, 0);
+	gtk_box_pack_start(GTK_BOX(hbox),freq_spin,FALSE,FALSE,0);
 
 	gtk_container_add(GTK_CONTAINER(vbox),hbox);
 	hbox = gtk_hbox_new(FALSE,0);

@@ -1,0 +1,20 @@
+
+GKrellM_SNMP FAQ:
+
+
+> I've downloaded v0.9 of GKrellM_SNMP, and it seams like i'm missing
+> crypto libs... Where can i get them?
+
+The libcrypto ispart of OpenSSL.
+Which libs is libsnmp compiled against?
+Try 'ldd /usr/lib/libsnmp.so' YMMV
+Mine is compiled staticly -- so I don't need to link against any lib.
+
+
+> I have problems with GKrellM SNMP v0.9. (I use it on GKrellM 0.10.5)
+> Your sample connections are working, but my custom OID won't.
+
+If seen at least one broken router (cisco-2514 w/ IOS Version 11.2(5))
+reporting the wrong ASN.1 type (ASN_BOOLEAN instead of ASN_INTEGER).
+Please report the offending OID's and I'll see if there's a workaround
+possible.
