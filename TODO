@@ -57,10 +57,11 @@ A divisor would be nice, too.  For example, I'm monitoring interface usage
 on a router and the fields are given in bits/sec--It'd be handy if I could
 divide the result by 1000 and get the kilobits/sec as this would take up
 less room.
--> Todo, a variable auto divisor is already there.
+-> Done
 
 Though I don't usually need them, I noticed that re-reading the config file
 will break if the descriptive text has a space in it.
+-> Done
 
 It'd also be nice to have a max limit that could be set either by hand or
 by a an snmp oid and then putting a krell (like underneat the 

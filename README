@@ -216,6 +216,12 @@ Thanks to:
  Eric Lindvall <eric@5stops.com>
  (fixed a bug concerning the error state)
 
+ Quentin Garnier <cube@netbsd.org>
+ (transport:host patch)
+
+ Juan Manuel Garcia Molina <juanma@debian.org>
+ Elmar Hoffmann <elho@elho.net>
+ (reported that the chart config isn't saved/restored)
 
 
 AUTHOR AND WEBPAGE:

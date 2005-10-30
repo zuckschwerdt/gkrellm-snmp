@@ -5,6 +5,11 @@ GKrellM_SNMP Changelog:
  - TODO: meters
  - TODO: clean GKrellM2 / GTK2 port
 
+0.22 (2003-09-21)
+ - net-snmp is the default now, use make ucdsnmp if necessary
+ - tcp/udp transport (patch from Quentin Garnier)
+ - added chart config save/load functions
+ 
 0.21 (2003-09-21)
  - some snmp bugfixes
  - tooltips reenabled
@@ -26,67 +31,67 @@ GKrellM_SNMP Changelog:
  - fixed the error state (Eric Lindvall)
 
 0.17 (2001-05-09)
-- added button for auto scale feature
-- added divisor feature
-- empty field proof configuration file reading
+ - added button for auto scale feature
+ - added divisor feature
+ - empty field proof configuration file reading
 
 0.16 (2001-04-03)
-- fixed a major bug (Ben Winslow)
+ - fixed a major bug (Ben Winslow)
 
 0.15 (2001-03-29)
-- fixed extended ASN1 types.
-- delta monitoring. (eg. monitor packet counters instead of gauges)
-- using whitespace in label and unit is save now.
+ - fixed extended ASN1 types.
+ - delta monitoring. (eg. monitor packet counters instead of gauges)
+ - using whitespace in label and unit is save now.
 
 0.14 (2001-02-02)
-- Symbolic OIDs are working.
-- work-around : early freeing of snmp session caused errors
+ - Symbolic OIDs are working.
+ - work-around : early freeing of snmp session caused errors
 
 0.13 (2001-01-23)
-- Failed DNS lookups won't harm GKrellM anymore.
+ - Failed DNS lookups won't harm GKrellM anymore.
 
 0.12 (2001-01-22)
-- minor tweaks for GKrellM 1.0.4
+ - minor tweaks for GKrellM 1.0.4
 
 0.11 (2000-11-30)
-- Tooltips with verbose info.
-- Errors get reported to tooltip instead of clobbering STDERR
+ - Tooltips with verbose info.
+ - Errors get reported to tooltip instead of clobbering STDERR
 
 0.10 (2000-09-25)
-- You may now select the delay between reader updates
-- Workaround for buggy cisco's reporting ASN_INTEGER's as ASN_BOOLEAN
+ - You may now select the delay between reader updates
+ - Workaround for buggy cisco's reporting ASN_INTEGER's as ASN_BOOLEAN
 
 0.9 (2000-07-25)
-- monitored values will be cached. E.g. you can switch themes without
+ - monitored values will be cached. E.g. you can switch themes without
   losing the monitor (SNMP is to slow to re-read values that fast)
 
 0.8 (2000-06-05)
-- Bill mentioned some change for upcoming 0.10.0
-- Fixed ASN.1 return type strangeness with cisco7204VXR router
+ - Bill mentioned some change for upcoming 0.10.0
+ - Fixed ASN.1 return type strangeness with cisco7204VXR router
   thanks to Stefan Raab <stefan.raab@nextel.com> who
   brought that to my attention and provided hardware access
 
 0.7 (2000-06-04)
-- clean up's for first public release!
+ - clean up's for first public release!
 
 0.6 (2000-06-01)
-- fixed some string allocation error (uninitialized)
-- finaly made SNMP request asynchronos!
+ - fixed some string allocation error (uninitialized)
+ - finaly made SNMP request asynchronos!
 
 0.5 (2000-05-11)
-- different panel styles for active/errored monitors
+ - different panel styles for active/errored monitors
 
 0.4 (2000-05-09)
-- Fixed a major Segfault - that was way to easy...
+ - Fixed a major Segfault - that was way to easy...
 
 0.3 (2000-05-07)
-- Makefile fix for FreeBSD
-- Makefile fix concerning missing PLUGIN_DIR
-- Slider now disabled (will be optional sometime)
-- You can now have multiple SNMP monitors
+ - Makefile fix for FreeBSD
+ - Makefile fix concerning missing PLUGIN_DIR
+ - Slider now disabled (will be optional sometime)
+ - You can now have multiple SNMP monitors
 
 0.2 (2000-05-06)
-- added ChangeLog, README, Makefile
+ - added ChangeLog, README, Makefile
 
 0.1 (2000-05-05)
-- proof of concept, test release
+ - proof of concept, test release

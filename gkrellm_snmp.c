@@ -1,5 +1,5 @@
 /* SNMP reader plugin for GKrellM 
-|  Copyright (C) 2000-2003  Christian W. Zuckschwerdt <zany@triq.net>
+|  Copyright (C) 2000-2005  Christian W. Zuckschwerdt <zany@triq.net>
 |
 |  Author:  Christian W. Zuckschwerdt  <zany@triq.net>  http://triq.net/
 |  Latest versions might be found at:  http://gkrellm.net/
@@ -33,15 +33,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 
-#ifdef NETSNMP
-#include <net-snmp/net-snmp-config.h>
-#include <net-snmp/net-snmp-includes.h>
-#define RECEIVED_MESSAGE NETSNMP_CALLBACK_OP_RECEIVED_MESSAGE
-#define TIMED_OUT NETSNMP_CALLBACK_OP_TIMED_OUT
-#ifdef DEBUG_SNMP
-#include <net-snmp/snmp_debug.h>
-#endif /* DEBUG_SNMP */
-#else /* UCD-SNMP */
+#ifdef UCDSNMP
 #include <ucd-snmp/asn1.h>
 #include <ucd-snmp/mib.h>
 #include <ucd-snmp/parse.h>
@@ -52,7 +44,15 @@
 #ifdef DEBUG_SNMP
 #include <ucd-snmp/snmp_debug.h>
 #endif /* DEBUG_SNMP */
-#endif /* UCD-SNMP */
+#else /* UCDSNMP */
+#include <net-snmp/net-snmp-config.h>
+#include <net-snmp/net-snmp-includes.h>
+#define RECEIVED_MESSAGE NETSNMP_CALLBACK_OP_RECEIVED_MESSAGE
+#define TIMED_OUT NETSNMP_CALLBACK_OP_TIMED_OUT
+#ifdef DEBUG_SNMP
+#include <net-snmp/snmp_debug.h>
+#endif /* DEBUG_SNMP */
+#endif /* UCDSNMP */
 
 #include <sys/time.h>
 
@@ -974,33 +974,68 @@ save_plugin_config(FILE *f)
 	      reader->oid_str, unit,
 	      reader->delay, reader->delta,
 	      reader->divisor, reader->scale);
+      gkrellm_save_chartconfig(f, reader->chart_config, PLUGIN_CONFIG_KEYWORD, label);
       g_free(label);
       g_free(unit);
   }
 }
 
 static void
-load_plugin_config(gchar *arg)
+load_plugin_config(gchar *config_line)
 {
-  Reader *reader, *nreader;
+  Reader *reader, *nreader = NULL;
 
   gchar   proto[CFG_BUFSIZE], bufl[CFG_BUFSIZE];
   gchar   bufc[CFG_BUFSIZE], bufp[CFG_BUFSIZE];
   gchar   bufo[CFG_BUFSIZE], bufu[CFG_BUFSIZE];
+  gchar   buft[CFG_BUFSIZE], peer[CFG_BUFSIZE];
   gint    n;
 
+  if (sscanf(config_line, GKRELLM_CHARTCONFIG_KEYWORD " %s %s", bufl, bufc) == 2) {
+	g_strdelimit(bufl, "_", ' ');
+	/* look for any such reader */
+	for (reader = readers; reader ; reader = reader->next) {
+		if (!strcmp(reader->label, bufl)) {
+			nreader = reader;
+			break;
+		}
+	}
+	/* look for unconf'd reader */
+	for (reader = readers; reader ; reader = reader->next) {
+		if (!strcmp(reader->label, bufl) && !reader->chart_config) {
+			nreader = reader;
+			break;
+		}
+	}
+	if (!nreader) {/* well... */
+		fprintf(stderr, "chart_config appeared before chart, this isn't handled\n%s\n", config_line);
+		return;
+	}
+	//"chart_config in "
+	gkrellm_load_chartconfig(&nreader->chart_config, bufc, /*max_cd*/1);
+  	return;
+  }
+  
   reader = g_new0(Reader, 1); 
 
-  n = sscanf(arg, "%s %[^:]://%[^@]@%[^:]:%d/%s %s %d %d %d %d",
-	     bufl, proto, bufc, bufp, &reader->port, bufo, bufu,
+  n = sscanf(config_line, "%s %[^:]://%[^@]@%[^:]:%[^:]:%d/%s %s %d %d %d %d",
+	     bufl, proto, bufc, buft, bufp, &reader->port, bufo, bufu,
 	     &reader->delay, &reader->delta,
 	     &reader->divisor, &reader->scale);
-  if (n >= 6)
+  if (n >= 6) {
+	g_snprintf(peer, CFG_BUFSIZE, "%s:%s", buft, bufp);
+	peer[CFG_BUFSIZE-1] = '\0';
+  } else
+	  n = sscanf(config_line, "%s %[^:]://%[^@]@%[^:]:%d/%s %s %d %d %d %d",
+	     bufl, proto, bufc, peer, &reader->port, bufo, bufu,
+	     &reader->delay, &reader->delta,
+	     &reader->divisor, &reader->scale);
+  if (n >= 7)
     {
       if (g_strcasecmp(proto, "snmp") == 0) {
 	gkrellm_dup_string(&reader->label, bufl);
 	gkrellm_dup_string(&reader->community, bufc);
-	gkrellm_dup_string(&reader->peer, bufp);
+	gkrellm_dup_string(&reader->peer, peer);
 	if (reader->delay < 10)
 	    reader->delay = 100;
 	if (reader->divisor == 0)
@@ -1304,6 +1339,8 @@ static gchar    *plugin_info_text =
 "It's measured in GKrellM ticks -- that's 1/10 seconds.\n"
 "Label is a unique name that gets prepended to your reader.\n"
 "Unit is just a string thats appended to your reader.\n"
+"You can prepend a specific transport to the peer name.\n"
+"(i.e. tcp:192.168.0.1)\n"
 "\n"
 "Some examples:\n"
 "\n"
@@ -1339,9 +1376,9 @@ static gchar    *plugin_info_text =
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin 0.20\n"
+   "SNMP plugin 0.22\n"
    "GKrellM SNMP monitor Plugin\n\n"
-   "Copyright (C) 2000-2003 Christian W. Zuckschwerdt <zany@triq.net>\n"
+   "Copyright (C) 2000-2005 Christian W. Zuckschwerdt <zany@triq.net>\n"
    "\n"
    "http://triq.net/gkrellm.html\n\n"
    "Released under the GNU Public Licence"

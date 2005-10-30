@@ -2,9 +2,10 @@
 
 # Linux
 GTK_CONFIG = pkg-config gtk+-2.0
-SYSLIB = -lsnmp
+SNMPLIB = -lnetsnmp
+SYSLIB = $(SNMPLIB)
 # we need lib crypto if libsnmp has privacy support.
-SYSLIB += -lcrypto -L/usr/local/ssl/lib -L/usr/ssl/lib
+SYSLIB += -L/usr/local/ssl/lib -L/usr/ssl/lib -lcrypto
 
 # FreeBSD
 #GTK_CONFIG = gtk12-config
@@ -34,8 +35,8 @@ all:	gkrellm_snmp.so
 freebsd:
 	make GTK_CONFIG=gtk12-config SYSLIB=-lsnmp PLUGIN_DIR=/usr/X11R6/libexec/gkrellm/plugins
 
-netsnmp:
-	make CFLAGS="-DNETSNMP"
+ucdsnmp:
+	make CFLAGS="-DUCDSNMP" SNMPLIB="-lsnmp"
 
 gkrellm_snmp.so:	$(OBJS)
 	$(CC) $(OBJS) -o gkrellm_snmp.so $(LFLAGS) $(LIBS)
