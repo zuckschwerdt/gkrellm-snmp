@@ -1,9 +1,8 @@
-
 GKrellM_SNMP Changelog:
 
- - TODO: instance mapping
- - TODO: meters
- - TODO: clean GKrellM2 / GTK2 port
+0.23 (2006-05-01)
+ - Makefile changes for OS-X (thanks to Mark Duling)
+ - Added grid config to charts
 
 0.22 (2003-09-21)
  - net-snmp is the default now, use make ucdsnmp if necessary

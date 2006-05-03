@@ -185,7 +185,7 @@ RedHad Linux 6.1
 Thanks to:
 ==========
 
- Bill Wilson <billw@wt.net>
+ Bill Wilson <billw@gkrellm.net>
  (valuable feedback and last but not least making GKrellM!)
 
  Eike Bernhardt <teefax@pmnet.uni-oldenburg.de>
@@ -223,11 +223,14 @@ Thanks to:
  Elmar Hoffmann <elho@elho.net>
  (reported that the chart config isn't saved/restored)
 
+ Mark Duling <mark.duling@biola.edu>
+ (suggested Makefile improvements for OS-X)
+
 
 AUTHOR AND WEBPAGE:
 ===================
 
 Christian W. Zuckschwerdt  <zany@triq.net>
 GKrellM SNMP can be found at http://triq.net/gkrellm/
-and also at GKrellM homepage http://web.wt.net/~billw/gkrellm/gkrellm.html
+and also at GKrellM homepage http://gkrellm.net
 

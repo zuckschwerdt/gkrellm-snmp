@@ -2,6 +2,14 @@
 TODO / WISHLIST:
 ================
 
+TODO: instance mapping
+TODO: meters
+TODO: clean up GKrellM2 / GTK2 port
+
+void    gkrellm_set_chartconfig_fixed_grids(GkrellmChartconfig *cf, gint grids);
+gint    gkrellm_get_chartconfig_fixed_grids(GkrellmChartconfig *cf);
+cf->sequence_125
+
 Do you want/need
  monitor multiple oid's on the same server? (snmp bulk get)
  choose between charts and krells?

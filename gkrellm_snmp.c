@@ -1,5 +1,5 @@
 /* SNMP reader plugin for GKrellM 
-|  Copyright (C) 2000-2005  Christian W. Zuckschwerdt <zany@triq.net>
+|  Copyright (C) 2000-2006  Christian W. Zuckschwerdt <zany@triq.net>
 |
 |  Author:  Christian W. Zuckschwerdt  <zany@triq.net>  http://triq.net/
 |  Latest versions might be found at:  http://gkrellm.net/
@@ -607,6 +607,29 @@ simpleSNMPsend(struct snmp_session *session,
 }
 
 
+/* GKrellM Callbacks */
+
+static void
+cb_draw_chart(gpointer data)
+{
+	Reader *reader = (Reader *)data;
+
+	gchar *text = render_label(reader);
+	gkrellm_draw_chartdata(reader->chart);
+	gkrellm_draw_chart_text(reader->chart,
+				DEFAULT_STYLE_ID,
+				text);
+	gkrellm_draw_chart_to_screen(reader->chart);
+	g_free(text);
+}
+
+static void
+cb_chart_click(GtkWidget *widget, GdkEventButton *event, gpointer data)
+	{
+		if (event->button == 3)
+			gkrellm_chartconfig_window_create(data);
+	}
+
 /* GKrellM interface */
  
 static GkrellmMonitor *mon;
@@ -681,13 +704,7 @@ update_plugin()
 		( (reader->divisor == 0) ? 1 : reader->divisor );
 		
 				    gkrellm_store_chartdata(reader->chart, 0, val);
-				    text = render_label(reader);
-				    gkrellm_draw_chartdata(reader->chart);
-				    gkrellm_draw_chart_text(reader->chart,
-							    DEFAULT_STYLE_ID,
-							    text);
-				    gkrellm_draw_chart_to_screen(reader->chart);
-				    g_free(text);
+				    cb_draw_chart(reader);
 
 				    text = render_info(reader);
 				    gtk_tooltips_set_tip(reader->tooltip, reader->chart->drawing_area, text, "");
@@ -781,13 +798,6 @@ chart_expose_event(GtkWidget *widget, GdkEventExpose *ev)
 }
 
 static void
-cb_chart_click(GtkWidget *widget, GdkEventButton *event, gpointer data)
-	{
-		if (event->button == 3)
-			gkrellm_chartconfig_window_create(data);
-	}
-
-static void
 create_chart(GtkWidget *vbox, Reader *reader, gint first_create)
 {
     if (first_create)
@@ -796,6 +806,10 @@ create_chart(GtkWidget *vbox, Reader *reader, gint first_create)
 //    gkrellm_set_chart_height_default(reader->chart, 20);
 
     gkrellm_chart_create(vbox, mon, reader->chart, &reader->chart_config);
+
+    gkrellm_chartconfig_grid_resolution_adjustment(reader->chart_config,
+                /*map*/TRUE, /*spin_factor*/1.0, /*low*/1, /*high*/100000000,
+			/*step0*/0, /*step1*/0, /*digits*/0, /*width*/50);
 
     reader->chart_data = gkrellm_add_default_chartdata(reader->chart, "Plugin Data");
     
@@ -808,6 +822,7 @@ create_chart(GtkWidget *vbox, Reader *reader, gint first_create)
 
     if (first_create)
     {
+            gkrellm_set_draw_chart_function(reader->chart, cb_draw_chart, reader);
 	    gtk_signal_connect(GTK_OBJECT(reader->chart->drawing_area),
 			       "expose_event", (GtkSignalFunc) chart_expose_event, NULL);
 	    gtk_signal_connect(GTK_OBJECT(reader->chart->drawing_area),
@@ -991,7 +1006,7 @@ load_plugin_config(gchar *config_line)
   gchar   buft[CFG_BUFSIZE], peer[CFG_BUFSIZE];
   gint    n;
 
-  if (sscanf(config_line, GKRELLM_CHARTCONFIG_KEYWORD " %s %s", bufl, bufc) == 2) {
+  if (sscanf(config_line, GKRELLM_CHARTCONFIG_KEYWORD " %s %[^\n]", bufl, bufc) == 2) {
 	g_strdelimit(bufl, "_", ' ');
 	/* look for any such reader */
 	for (reader = readers; reader ; reader = reader->next) {
@@ -1376,9 +1391,9 @@ static gchar    *plugin_info_text =
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin 0.22\n"
+   "SNMP plugin 0.23\n"
    "GKrellM SNMP monitor Plugin\n\n"
-   "Copyright (C) 2000-2005 Christian W. Zuckschwerdt <zany@triq.net>\n"
+   "Copyright (C) 2000-2006 Christian W. Zuckschwerdt <zany@triq.net>\n"
    "\n"
    "http://triq.net/gkrellm.html\n\n"
    "Released under the GNU Public Licence"
