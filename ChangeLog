@@ -1,6 +1,6 @@
 GKrellM_SNMP Changelog:
 
-0.23 (2006-05-01)
+1.0 (2006-05-01)
  - Makefile changes for OS-X (thanks to Mark Duling)
  - Added grid config to charts
 

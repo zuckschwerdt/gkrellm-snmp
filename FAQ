@@ -1,11 +1,10 @@
-
 GKrellM_SNMP FAQ:
 
 
 > I've downloaded v0.9 of GKrellM_SNMP, and it seams like i'm missing
 > crypto libs... Where can i get them?
 
-The libcrypto ispart of OpenSSL.
+The libcrypto is part of OpenSSL.
 Which libs is libsnmp compiled against?
 Try 'ldd /usr/lib/libsnmp.so' YMMV
 Mine is compiled staticly -- so I don't need to link against any lib.
@@ -18,15 +17,6 @@ There is some broken hardware and some ASN.1 types aren't implemented, yet.
 Please report the offending OID's and I'll see if there's a workaround
 possible.
 
---
-
-To: Alessandro Maestri <a.maestri@cs.tin.it>
-Date: Tue, 23 Oct 2001 14:19:28 +0200 (CEST)
-Subject: Re: Compiling error for gkrellm_snmp
-
-Hi Alessandro,
-
-On Tue, 23 Oct 2001, Alessandro Maestri wrote:
 
 > /usr/local/lib/libsnmp.a(mib.o): In function snmp_parse_oid':
 > /root/gzipped/ucd-snmp-4.2.2/snmplib/mib.c(.text+0x8738): multiple
