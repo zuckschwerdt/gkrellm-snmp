@@ -1,5 +1,9 @@
 GKrellM_SNMP Changelog:
 
+1.1 (2009-01-03)
+ - License clarification (thanks to Debian maintainers)
+ - Removed unnecessary linking to libssl
+
 1.0 (2006-05-01)
  - Makefile changes for OS-X (thanks to Mark Duling)
  - Added grid config to charts

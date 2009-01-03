@@ -4,8 +4,8 @@
 GTK_CONFIG ?= pkg-config gtk+-2.0
 SNMPLIB = -lnetsnmp
 SYSLIB ?= $(SNMPLIB)
-# we need lib crypto if libsnmp has privacy support.
-SYSLIB += -L/usr/local/ssl/lib -L/usr/ssl/lib -lcrypto
+# older systems need lib crypto if libsnmp has privacy support.
+# SYSLIB += -L/usr/local/ssl/lib -L/usr/ssl/lib -lcrypto
 
 USER_PLUGIN_DIR ?= $(HOME)/.gkrellm2/plugins
 PLUGIN_DIR ?= /usr/lib/gkrellm2/plugins

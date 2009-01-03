@@ -1,22 +1,32 @@
 /* SNMP reader plugin for GKrellM 
-|  Copyright (C) 2000-2006  Christian W. Zuckschwerdt <zany@triq.net>
+|  Copyright (C) 2000-2009  Christian W. Zuckschwerdt <zany@triq.net>
 |
 |  Author:  Christian W. Zuckschwerdt  <zany@triq.net>  http://triq.net/
 |  Latest versions might be found at:  http://gkrellm.net/
 |
-| This program is free software; you can redistribute it and/or
-| modify it under the terms of the GNU General Public License
-| as published by the Free Software Foundation; either version 2
-| of the License, or (at your option) any later version.
+| GKrellM_SNMP is free software; you can redistribute it and/or
+| modify it under the terms of the GNU General Public License as
+| published by the Free Software Foundation; either version 2 of
+| the License, or (at your option) any later version.
 |
+| In addition, as a special exception, the copyright holders give
+| permission to link the code of this program with the OpenSSL library,
+| and distribute linked combinations including the two.
+| You must obey the GNU General Public License in all respects
+| for all of the code used other than OpenSSL.  If you modify
+| file(s) with this exception, you may extend this exception to your
+| version of the file(s), but you are not obligated to do so.  If you
+| do not wish to do so, delete this exception statement from your
+| version.  If you delete this exception statement from all source
+| files in the program, then also delete it here.
+
 | This program is distributed in the hope that it will be useful,
 | but WITHOUT ANY WARRANTY; without even the implied warranty of
 | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 | GNU General Public License for more details.
-|
+
 | You should have received a copy of the GNU General Public License
-| along with this program; if not, write to the Free Software
-| Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+| along with GKrellM_SNMP. If not, see <http://www.gnu.org/>.
 */
 
 /* Installation:
@@ -1394,7 +1404,7 @@ static gchar    *plugin_about_text =
    "Copyright (C) 2000-2006 Christian W. Zuckschwerdt <zany@triq.net>\n"
    "\n"
    "http://triq.net/gkrellm.html\n\n"
-   "Released under the GNU Public Licence"
+   "Released under the GNU Public Licence with OpenSSL exemption"
 ;
 
 static gchar *reader_title[CLIST_WIDTH] =
