@@ -1,7 +1,7 @@
 # Makefile for a GKrellM SNMP monitor plugin
 
 # Linux
-GTK_CONFIG ?= pkg-config gtk+-2.0
+GKRELLM_CONFIG ?=pkg-config gkrellm
 SNMPLIB = -lnetsnmp
 SYSLIB ?= $(SNMPLIB)
 # older systems need lib crypto if libsnmp has privacy support.
@@ -9,19 +9,17 @@ SYSLIB ?= $(SNMPLIB)
 
 USER_PLUGIN_DIR ?= $(HOME)/.gkrellm2/plugins
 PLUGIN_DIR ?= /usr/lib/gkrellm2/plugins
-GKRELLM_INCLUDE ?= -I/usr/X11R6/include
+GKRELLM_INCLUDE ?= `$(GKRELLM_CONFIG) --cflags`
+GKRELLM_LIB ?= `$(GKRELLM_CONFIG) --libs`
 
-GTK_INCLUDE = `$(GTK_CONFIG) --cflags`
-GTK_LIB = `$(GTK_CONFIG) --libs`
-
-CFLAGS += -Wall -fPIC $(GTK_INCLUDE) $(GKRELLM_INCLUDE)
-LIBS = $(GTK_LIB) $(SYSLIB)
-LFLAGS ?= -shared
+CFLAGS += -Wall -fPIC -I. $(GKRELLM_INCLUDE)
+LIBS = $(GKRELLM_LIB) $(SYSLIB)
+LFLAGS ?= -shared -Wl,-Bsymbolic
 
 INSTALL ?= install -c
 STRIP ?= strip -x
 
-OBJS = gkrellm_snmp.o
+OBJS = simpleSNMP.o gkrellm_snmp.o
 
 all:	gkrellm_snmp.so
 
