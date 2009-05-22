@@ -31,13 +31,41 @@
 */
 
 
+/* In case of SNMP trouble: #define DEBUG_SNMP */
+
+#include <stdio.h>
+
+#ifdef UCDSNMP
+#include <ucd-snmp/asn1.h>
+#include <ucd-snmp/mib.h>
+#include <ucd-snmp/parse.h>
+#include <ucd-snmp/snmp.h>
+#include <ucd-snmp/snmp_api.h>
+#include <ucd-snmp/snmp_client.h>
+#include <ucd-snmp/snmp_impl.h> /* special ASN types */
+#ifdef DEBUG_SNMP
+#include <ucd-snmp/snmp_debug.h>
+#endif /* DEBUG_SNMP */
+#else /* UCDSNMP */
+#include <net-snmp/net-snmp-config.h>
+#include <net-snmp/net-snmp-includes.h>
+#define RECEIVED_MESSAGE NETSNMP_CALLBACK_OP_RECEIVED_MESSAGE
+#define TIMED_OUT NETSNMP_CALLBACK_OP_TIMED_OUT
+#ifdef DEBUG_SNMP
+#include <net-snmp/snmp_debug.h>
+#endif /* DEBUG_SNMP */
+#endif /* UCDSNMP */
+
+#include <sys/time.h>
+
 #include <simpleSNMP.h>
+
 
 /* #define STREAM *//* test for Lou Cephyr */
 
 
 static gchar *
-strdup_uptime (u_long time)
+strdup_uptime (glong time)
 {
     gint up_d, up_h, up_m;
 
@@ -54,7 +82,7 @@ strdup_uptime (u_long time)
  * snmp_parse_args.c
  */
 
-oid
+static oid
 *snmp_parse_oid(const char *argv,
 		oid *root,
 		size_t *rootlen)
@@ -90,7 +118,6 @@ simpleSNMPinit()
 
     init_mib();
 }
-
 
 gchar *
 simpleSNMPprobe(gchar *peer, gint port, gchar *community)
@@ -148,7 +175,7 @@ simpleSNMPprobe(gchar *peer, gint port, gchar *community)
     snmp_sess_init( &session );
 
     session.version = SNMP_VERSION_1;
-    session.community = (u_char *)community;
+    session.community = (guchar *)community;
     session.community_len = strlen(community);
     session.peername = peer;
 
@@ -244,7 +271,7 @@ retry:
 
     return result;
 }
-         
+
 static int
 snmp_input(int op,
 	   struct snmp_session *session,
@@ -255,7 +282,7 @@ snmp_input(int op,
     struct variable_list *vars;
     gint asn1_type[MAX_OID_STR];
     gchar *result[MAX_OID_STR];
-    u_long result_n[MAX_OID_STR];
+    glong result_n[MAX_OID_STR];
     gchar *error = NULL;
     input_data *new_data = NULL;
     gint num_pdu = 0;
@@ -394,7 +421,7 @@ simpleSNMPopen(gchar *peername,
     snmp_sess_init( &session );
 
     session.version = SNMP_VERSION_1;
-    session.community = (u_char *)community;
+    session.community = (guchar *)community;
     session.community_len = strlen(community);
     session.peername = peername;
     session.remote_port = port;
@@ -493,14 +520,12 @@ simpleSNMPsend(struct snmp_session *session, gchar **oid_str, gint num_oid_str)
     return (!error);
 }
 
-
 void 
 simpleSNMPclose(struct snmp_session *session)
 {
 
     snmp_close(session);
 }
-
 
 gint
 simpleSNMPcheck_oid(const char *argv)

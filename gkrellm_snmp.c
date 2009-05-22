@@ -31,10 +31,15 @@
 */
 
 
+#include <stdio.h>
+
+#include <gkrellm2/gkrellm.h>
+
 #include <simpleSNMP.h>
 
-#define SNMP_PLUGIN_MAJOR_VERSION 1
-#define SNMP_PLUGIN_MINOR_VERSION 1
+
+#define SNMP_PLUGIN_MAJOR_VERSION "1"
+#define SNMP_PLUGIN_MINOR_VERSION "1.1"
 
 
 #define WITH_PANEL
@@ -74,15 +79,15 @@ struct Reader {
 
 	/* The sample data for a chart */
 	gint			new;
-	u_long			sample_time;
-	u_long			old_sample_time;
+	glong			sample_time;
+	glong			old_sample_time;
 	gchar			*error;
 	gchar			*old_error;
 	gint			num_sample;
 	gint			asn1_type[MAX_FORMAT_VALUES];
 	gchar			*sample[MAX_FORMAT_VALUES];
-	u_long			sample_n[MAX_FORMAT_VALUES];
-	u_long			old_sample_n[MAX_FORMAT_VALUES];
+	glong			sample_n[MAX_FORMAT_VALUES];
+	glong			old_sample_n[MAX_FORMAT_VALUES];
 
 	/* The simpleSNMP interface information */
 	struct snmp_session	*session;
@@ -102,7 +107,7 @@ static gint style_id;
 
 
 static gchar *
-scale(u_long num)
+scale(glong num)
 {
     if (num > 2000000000)
 	return g_strdup_printf("%ldG", num/1024/1024/1024);
@@ -132,11 +137,11 @@ render_error(Reader *reader)
 }
 
 
-static u_long
+static glong
 new_value (Reader *reader, gint sample_num)
 {
-    u_long since_last = 0;
-    u_long val;
+    glong since_last = 0;
+    glong val;
 
     /* 100: turn TimeTicks into seconds */
     since_last = (reader->sample_time - reader->old_sample_time) / 100;
@@ -167,7 +172,7 @@ render_label(Reader *reader)
     gint len;
     gint sample = 0;
     gchar *scale_str;
-    u_long value;
+    glong value;
     gchar buffer[128];
     gchar *buf = buffer;
     gint size = sizeof (buffer);
@@ -236,8 +241,8 @@ render_label(Reader *reader)
 static gchar *
 render_info(Reader *reader)
 {
-    u_long since_last = 0;
-    u_long val;
+    glong since_last = 0;
+    glong val;
     gint up_d, up_h, up_m;
     gint i;
     gchar time_buf [100];
@@ -343,7 +348,7 @@ update_plugin()
     Reader *reader;
     gchar  *text = NULL;
     gint i;
-    u_long val[MAX_CHART_VALUES];
+    glong val[MAX_CHART_VALUES];
 
     /* See if we received SNMP responses */
     simpleSNMPupdate();
@@ -1096,7 +1101,7 @@ static gchar    *plugin_info_text[] = {
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin  Version %d.%d\n"
+   "SNMP plugin  Version %s.%s\n"
    "GKrellM SNMP monitor Plugin\n\n"
    "Copyright (C) 2000-2006 Christian W. Zuckschwerdt <zany@triq.net>\n"
    "\n"
