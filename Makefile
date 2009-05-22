@@ -2,6 +2,8 @@
 
 # Linux
 GKRELLM_CONFIG ?=pkg-config gkrellm
+# Linux glib for simpleSNMP
+SIMPLE_CONFIG ?=pkg-config glib-2.0
 SNMPLIB = -lnetsnmp
 SYSLIB ?= $(SNMPLIB)
 # older systems need lib crypto if libsnmp has privacy support.
@@ -10,10 +12,12 @@ SYSLIB ?= $(SNMPLIB)
 USER_PLUGIN_DIR ?= $(HOME)/.gkrellm2/plugins
 PLUGIN_DIR ?= /usr/lib/gkrellm2/plugins
 GKRELLM_INCLUDE ?= `$(GKRELLM_CONFIG) --cflags`
+SIMPLE_INCLUDE ?= `$(SIMPLE_CONFIG) --cflags`
 GKRELLM_LIB ?= `$(GKRELLM_CONFIG) --libs`
+SIMPLE_LIB ?= `$(SIMPLE_CONFIG) --libs`
 
-CFLAGS += -Wall -fPIC -I. $(GKRELLM_INCLUDE)
-LIBS = $(GKRELLM_LIB) $(SYSLIB)
+CFLAGS += -Wall -fPIC -I. $(GKRELLM_INCLUDE) $(SIMPLE_INCLUDE)
+LIBS = $(GKRELLM_LIB) $(SIMPLE_LIB) $(SYSLIB)
 LFLAGS ?= -shared -Wl,-Bsymbolic
 
 INSTALL ?= install -c

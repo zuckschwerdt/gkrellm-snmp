@@ -31,35 +31,7 @@
 */
 
 
-/* In case of SNMP trouble: #define DEBUG_SNMP */
-
-#include <stdio.h>
-#include <sys/types.h>
-
-#ifdef UCDSNMP
-#include <ucd-snmp/asn1.h>
-#include <ucd-snmp/mib.h>
-#include <ucd-snmp/parse.h>
-#include <ucd-snmp/snmp.h>
-#include <ucd-snmp/snmp_api.h>
-#include <ucd-snmp/snmp_client.h>
-#include <ucd-snmp/snmp_impl.h> /* special ASN types */
-#ifdef DEBUG_SNMP
-#include <ucd-snmp/snmp_debug.h>
-#endif /* DEBUG_SNMP */
-#else /* UCDSNMP */
-#include <net-snmp/net-snmp-config.h>
-#include <net-snmp/net-snmp-includes.h>
-#define RECEIVED_MESSAGE NETSNMP_CALLBACK_OP_RECEIVED_MESSAGE
-#define TIMED_OUT NETSNMP_CALLBACK_OP_TIMED_OUT
-#ifdef DEBUG_SNMP
-#include <net-snmp/snmp_debug.h>
-#endif /* DEBUG_SNMP */
-#endif /* UCDSNMP */
-
-#include <sys/time.h>
-
-#include <gkrellm2/gkrellm.h>
+#include <glib.h>
 
 
 /* The data structure for a chart */
@@ -89,9 +61,4 @@ extern	gint simpleSNMPsend(struct snmp_session *session,
 					gchar **oid_str, gint num_oid_str);
 extern	void simpleSNMPclose(struct snmp_session *session);
 extern	gint simpleSNMPcheck_oid(const char *argv);
-
-
-#ifdef UCDSNMP_PRE_4_2
-extern	oid *snmp_parse_oid(const char *argv, oid *root, size_t *rootlen);
-#endif /* UCDSNMP_PRE_4_2 */
 
