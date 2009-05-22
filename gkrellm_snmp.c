@@ -69,7 +69,7 @@
 
 #include <gkrellm2/gkrellm.h>
 
-/* #define STREAM /* test for Lou Cephyr */
+/* #define STREAM *//* test for Lou Cephyr */
 
 
 #define SNMP_PLUGIN_MAJOR_VERSION 0
@@ -177,10 +177,11 @@ render_label(Reader *reader)
 	return strdup_uptime (reader->sample_n);
     }
 
-    if (reader->delta)
+    if (reader->delta && reader->divisor == 0)
+	val = (reader->sample_n - reader->old_sample_n);
+    else if (reader->delta)
 	val = (reader->sample_n - reader->old_sample_n) /
-		( (since_last < 1) ? 1 : since_last ) /
-		( (reader->divisor == 0) ? 1 : reader->divisor );
+		( (since_last < 1) ? 1 : since_last ) / reader->divisor;
     else
 	val = reader->sample_n / 
 		( (reader->divisor == 0) ? 1 : reader->divisor );
@@ -211,7 +212,10 @@ render_info(Reader *reader)
     up_h = (reader->sample_time/100/60/60) % 24;
     up_m = (reader->sample_time/100/60) % 60;
 
-    delta = (reader->sample_n - reader->old_sample_n) /
+    if (reader->divisor == 0)
+	delta = (reader->sample_n - reader->old_sample_n);
+    else
+	delta = (reader->sample_n - reader->old_sample_n) /
 	    ( (since_last < 1) ? 1 : since_last );
 
     return g_strdup_printf ("%s '%s' %ld (%ld s: %ld /%d =%ld) %s  (snmp://%s@%s:%d/%s) Uptime: %dd %d:%d",
@@ -220,7 +224,7 @@ render_info(Reader *reader)
 			    reader->sample_n,
 			    since_last,
 			    delta,
-			    reader->divisor, 
+			    (reader->divisor == 0) ? 1 : reader->divisor,
 			    delta / ( (reader->divisor == 0) ? 1 : reader->divisor ), 
 			    reader->unit, 
 			    reader->community,
@@ -316,7 +320,7 @@ snmp_probe(gchar *peer, gint port, gchar *community)
     snmp_sess_init( &session );
 
     session.version = SNMP_VERSION_1;
-    session.community = community;
+    session.community = (u_char *)community;
     session.community_len = strlen(community);
     session.peername = peer;
 
@@ -445,7 +449,13 @@ snmp_input(int op,
 		    break;
 		case ASN_OCTET_STR: /* value is a string */
 		    asn1_type = ASN_OCTET_STR;
-		    result = g_strndup(vars->val.string, vars->val_len);
+		    result = g_strndup((gchar *)vars->val.string, vars->val_len);
+		    /* Add as ASN_INTEGER if it converts properly */
+		    if (sscanf (result, "%lu", &result_n) == 1) {
+			asn1_type = ASN_INTEGER;
+		    } else {
+			result_n = 0;
+		    }
 		    break;
 		case ASN_INTEGER: /* value is a integer */
 		case ASN_COUNTER: /* use as if it were integer */
@@ -555,7 +565,7 @@ simpleSNMPopen(gchar *peername,
     snmp_sess_init( &session );
 
     session.version = SNMP_VERSION_1;
-    session.community = community;
+    session.community = (u_char *)community;
     session.community_len = strlen(community);
     session.peername = peername;
     session.remote_port = port;
@@ -699,64 +709,66 @@ update_plugin()
 		    g_free(text);
 		}
 	    } else {
-		    if ((GK.timer_ticks % reader->delay) == 0)
-			    if (reader->chart != NULL)
-			    {
-    /* 100: turn TimeTicks into seconds */
-    since_last = (reader->sample_time - reader->old_sample_time) / 100;
-    
-    if (reader->delta)
-	val = (reader->sample_n - reader->old_sample_n) /
-		( (since_last < 1) ? 1 : since_last ) /
-		( (reader->divisor == 0) ? 1 : reader->divisor );
-    else
-	val = reader->sample_n / 
-		( (reader->divisor == 0) ? 1 : reader->divisor );
+		if ((GK.timer_ticks % reader->delay) == 0) {
+		    if (reader->chart != NULL)
+		    {
+			/* 100: turn TimeTicks into seconds */
+			since_last = (reader->sample_time - reader->old_sample_time) / 100;
+
+			if (reader->delta && reader->divisor == 0)
+			    val = (reader->sample_n - reader->old_sample_n);
+			else if (reader->delta)
+			    val = (reader->sample_n - reader->old_sample_n) /
+				( (since_last < 1) ? 1 : since_last ) / reader->divisor;
+			else
+			    val = reader->sample_n / 
+				( (reader->divisor == 0) ? 1 : reader->divisor );
 		
-				    gkrellm_store_chartdata(reader->chart, 0, val);
-				    cb_draw_chart(reader);
+			gkrellm_store_chartdata(reader->chart, 0, val);
+			cb_draw_chart(reader);
 
-				    text = render_info(reader);
-				    gtk_tooltips_set_tip(reader->tooltip, reader->chart->drawing_area, text, "");
-				    gtk_tooltips_enable(reader->tooltip);
-				    g_free(text);
+			text = render_info(reader);
+			gtk_tooltips_set_tip(reader->tooltip, reader->chart->drawing_area, text, "");
+			gtk_tooltips_enable(reader->tooltip);
+			g_free(text);
 
-		    		    reader->old_sample_n = reader->sample_n;
-				    reader->old_sample_time = reader->sample_time;
-			    }
+		    	reader->old_sample_n = reader->sample_n;
+			reader->old_sample_time = reader->sample_time;
+		    }
+		}
 
-		    /* if there are changes update label */
+		/* if there are changes update label */
 		if (reader->panel != NULL)
 		{
-			reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE_ID);
-		if ( !reader->old_sample || strcmp(reader->sample,
+		    reader->panel->textstyle = gkrellm_panel_textstyle(DEFAULT_STYLE_ID);
+		    if ( !reader->old_sample || strcmp(reader->sample,
 						   reader->old_sample) ||
-		     (reader->sample_n != reader->old_sample_n) ) {
+				(reader->sample_n != reader->old_sample_n) ) {
 
-		    g_free(reader->old_sample);
-		    reader->old_sample = g_strdup(reader->sample);
+			g_free(reader->old_sample);
+			reader->old_sample = g_strdup(reader->sample);
 
-		    text = render_label(reader);
-		    gkrellm_dup_string(&reader->panel->label->string, text);
-		    g_free(text);
-		    //	i = atoi(text);
+			text = render_label(reader);
+			gkrellm_dup_string(&reader->panel->label->string, text);
+			g_free(text);
+			//	i = atoi(text);
 
-		    text = render_info(reader);
-		    gtk_tooltips_set_tip(reader->tooltip, reader->panel->drawing_area, text, "");
-		    gtk_tooltips_enable(reader->tooltip);
+			text = render_info(reader);
+			gtk_tooltips_set_tip(reader->tooltip, reader->panel->drawing_area, text, "");
+			gtk_tooltips_enable(reader->tooltip);
 
-		    g_free(text);
-		    reader->old_sample_n = reader->sample_n;
-		    reader->old_sample_time = reader->sample_time;
-		}
+			g_free(text);
+			reader->old_sample_n = reader->sample_n;
+			reader->old_sample_time = reader->sample_time;
+		    }
 		}
 	    }
 
 	} else {
-		if (reader->panel != NULL)
-	    reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE_ID);
-		if (reader->panel != NULL)
-	    gtk_tooltips_disable(reader->tooltip);
+	    if (reader->panel != NULL)
+		reader->panel->textstyle = gkrellm_panel_alt_textstyle(DEFAULT_STYLE_ID);
+	    if (reader->panel != NULL)
+		gtk_tooltips_disable(reader->tooltip);
 	    //	i = -1;
 	}
       
@@ -764,11 +776,11 @@ update_plugin()
 
 	clock_style_id = gkrellm_lookup_meter_style_id(CLOCK_STYLE_NAME);
 
-		if (reader->panel != NULL)
-	gkrellm_draw_panel_label( reader->panel );
-				//GTK2 gkrellm_bg_panel_piximage(clock_style_id) );
-		if (reader->panel != NULL)
-	gkrellm_draw_panel_layers(reader->panel);
+	if (reader->panel != NULL)
+	    gkrellm_draw_panel_label( reader->panel );
+	//GTK2 gkrellm_bg_panel_piximage(clock_style_id) );
+	if (reader->panel != NULL)
+	    gkrellm_draw_panel_layers(reader->panel);
     }
 
 }
@@ -938,7 +950,6 @@ destroy_reader(Reader *reader)
 
 	if (reader->chart)
 	{
-		gkrellm_monitor_height_adjust( - reader->chart->h);
 		gkrellm_chartconfig_destroy(&reader->chart_config);
 		gkrellm_chart_destroy(reader->chart);
 	}
@@ -1061,10 +1072,8 @@ load_plugin_config(gchar *config_line)
 	gkrellm_dup_string(&reader->label, bufl);
 	gkrellm_dup_string(&reader->community, bufc);
 	gkrellm_dup_string(&reader->peer, peer);
-	if (reader->delay < 10)
+	if (reader->delay < 2)
 	    reader->delay = 100;
-	if (reader->divisor == 0)
-	    reader->divisor = 1;
 
 	gkrellm_dup_string(&reader->oid_str, bufo);
 
@@ -1460,7 +1469,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
 
 	label = gtk_label_new("Freq : ");
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
-	freq_spin_adj = gtk_adjustment_new (100, 10, 6000, 10, 100, 100);
+	freq_spin_adj = gtk_adjustment_new (100, 2, 6000, 2, 100, 100);
 	freq_spin = gtk_spin_button_new (GTK_ADJUSTMENT (freq_spin_adj), 1, 0);
 	gtk_box_pack_start(GTK_BOX(hbox),freq_spin,FALSE,FALSE,0);
 
@@ -1490,7 +1499,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
 
 	label = gtk_label_new("Divisor : ");
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
-	div_spin_adj = gtk_adjustment_new (1, 1, 1024, 1, 1, 1);
+	div_spin_adj = gtk_adjustment_new (1, 0, 1024, 1, 1, 1);
 	div_spin = gtk_spin_button_new (GTK_ADJUSTMENT (div_spin_adj), 1, 0);
 	gtk_box_pack_start(GTK_BOX(hbox),div_spin,FALSE,FALSE,0);
 
