@@ -42,8 +42,6 @@
 #define SNMP_PLUGIN_MINOR_VERSION "1.1"
 
 
-#define WITH_PANEL
-
 /* The name of the plugin in the Configuration menu */
 #define PLUGIN_CONFIG_NAME	"SNMP"
 /* The name of the configuration data in the user-config file */
@@ -55,6 +53,11 @@
 #define DEFAULT_FORMAT		"$L $0"
 #define MAX_FORMAT_VALUES	MAX_OID_STR
 #define MAX_CHART_VALUES	3
+
+/* The default settings for spin buttons, so they can be reset */
+#define	DEFAULT_PORT		161
+#define	DEFAULT_FREQ		100
+#define	DEFAULT_DIVISOR		1
 
 /* The data structure for a chart */
 
@@ -71,7 +74,7 @@ struct Reader {
 	gchar			*oid_str[MAX_OID_STR];
 	gint			num_oid_str;
 	gint			divisor;
-	gboolean		scale;
+	gboolean		panel;
 	gint			delay;
 	gboolean		delta;
 	gchar			*formatString;  /* Format for chart labels */
@@ -107,14 +110,16 @@ static gint style_id;
 
 
 static gchar *
-scale(glong num)
+scale(glong num, gboolean scale_it)
 {
-    if (num > 2000000000)
-	return g_strdup_printf("%ldG", num/1024/1024/1024);
-    if (num > 6000000)
-	return g_strdup_printf("%ldM", num/1024/1024);
-    if (num > 6000)
-	return g_strdup_printf("%ldK", num/1024);
+    if (scale_it) {
+	if (num > 2000000000)
+	    return g_strdup_printf("%ldG", num/1024/1024/1024);
+	if (num > 6000000)
+	    return g_strdup_printf("%ldM", num/1024/1024);
+	if (num > 6000)
+	    return g_strdup_printf("%ldK", num/1024);
+    }
     return g_strdup_printf("%ld", num);
 }
 
@@ -170,8 +175,7 @@ render_label(Reader *reader)
     gchar *s;
     gint index;
     gint len;
-    gint sample = 0;
-    gchar *scale_str;
+    gboolean scale_it;
     glong value;
     gchar buffer[128];
     gchar *buf = buffer;
@@ -189,14 +193,26 @@ render_label(Reader *reader)
 	len = 1;
 	if (*s == '$'  &&  s[1] != '\0') {
 	    c = s[1];
+	    if (c == 'S' && s[2] != '\0') {
+		scale_it = TRUE;
+		c = s[2];
+		++s;
+	    } else {
+		scale_it = FALSE;
+	    }
 	    /*
 	     * SEMI-BUG: this code only supports 36 string codes (0-9 and a-z).
 	     */
-	    if (c == 'M') {
-		index = gkrellm_get_chart_scalemax(reader->chart);
-		len = snprintf(buf, size, "%d", index);
-	    } else if (c == 'L') {
+	    if (c == 'L') {
+		/* Note, we ignore the scale argument */
 		len = snprintf(buf, size, "%s", reader->label);
+	    } else if (c == 'M') {
+		index = gkrellm_get_chart_scalemax(reader->chart);
+		len = snprintf(buf, size, "%s", scale(index, scale_it));
+	    } else if (c == 'I') {
+		len = snprintf(buf, size, "%ss", 
+		   scale((reader->sample_time - reader->old_sample_time + 50)/100,
+		   scale_it));
 	    } else {
 		index = -1;
 		if (isdigit(c))
@@ -207,15 +223,8 @@ render_label(Reader *reader)
 		    if (index >= reader->num_sample) {
 			len = 0;
 		    } else {
-			value = new_value (reader, sample);
-			sample++;
-			if (reader->scale) {
-			    scale_str = scale(value);
-			    len = snprintf(buf, size, "%s", scale_str);
-			    g_free (scale_str);
-			} else {
-			    len = snprintf(buf, size, "%ld", value);
-			}
+			value = new_value (reader, index);
+			len = snprintf(buf, size, "%s", scale(value, scale_it));
 		    }
 		}
 		else {
@@ -237,6 +246,7 @@ render_label(Reader *reader)
 
     return g_strdup (buffer);
 }
+
 
 static gchar *
 render_info(Reader *reader)
@@ -458,11 +468,11 @@ create_chart(GtkWidget *vbox, Reader *reader, gint first_create)
 
     if (first_create) {
 	reader->chart = gkrellm_chart_new0();
-#ifdef WITH_PANEL
-	reader->chart->panel = gkrellm_panel_new0();
-#else  /* WITH_PANEL */
-	reader->chart->panel = NULL;
-#endif /* WITH_PANEL */
+	if (reader->panel) {
+	    reader->chart->panel = gkrellm_panel_new0();
+	} else {
+	    reader->chart->panel = NULL;
+	}
     }
 
     gkrellm_chart_create(vbox, mon, reader->chart, &reader->chart_config);
@@ -624,6 +634,18 @@ prepare_oid_str (Reader *reader)
 
 /* Config section */
 
+#define CLIST_WIDTH 12
+
+/* This list represents the internal order and elements of each config table, */
+/* it is used for the definition of reader_clist in create_plugin_tab() below */
+static gchar *reader_title[CLIST_WIDTH] =
+{ "Label", "Peer", "Port",
+  "Community", "OID", "Elements",
+  "Freq", "Format", "Divisor", 
+  "Hide", "Delta", "Panel" };
+
+/* The global elements underlying the configuration table */
+/* They are mapped to the display layout in create_plugin_tab() below */
 static GtkWidget        *label_entry;
 static GtkWidget        *peer_entry;
 static GtkObject        *port_spin_adj;
@@ -633,16 +655,16 @@ static GtkWidget        *oid_entry;
 static GtkWidget        *elements_entry;
 static GtkObject        *freq_spin_adj;
 static GtkWidget        *freq_spin;
-static GtkWidget        *hide_button;
 static GtkWidget        *format_entry;
 static GtkObject        *div_spin_adj;
 static GtkWidget        *div_spin;
+static GtkWidget        *hide_button;
 static GtkWidget        *delta_button;
-static GtkWidget        *scale_button;
+static GtkWidget        *panel_button;
+
 static GtkWidget        *reader_clist;
 static gint             selected_row = -1;
 static gint             list_modified;
-#define CLIST_WIDTH 12
 
 #define	 STR_DELIMITERS	" \t"
 
@@ -660,15 +682,18 @@ save_plugin_config(FILE *f)
       if (label[0] == '\0') label = strdup("_");
       if (format[0] == '\0') format = strdup("_");
       if (elements[0]  == '\0') elements = strdup("_");
-      /* Note, unit is not used, but left in place in the config file */
-      fprintf(f, "%s %s snmp://%s@%s:%d/%s %s %d %d %d %d %s %d %s\n",
+
+      /* The layout of a config file entry is given by the following format, */
+      /* unit and scale are not used, but left in place in the config file */
+      fprintf(f, "%s %s snmp://%s@%s:%d/%s %s %d %d %d %d %d %s %d %s\n",
 	      PLUGIN_CONFIG_KEYWORD,
 	      label, reader->community,
 	      reader->peer, reader->port,
 	      reader->oid_base, unit,
-//AG Multi: Some of the following may need to be repeated
-	      reader->delay, reader->delta,
-	      reader->divisor, reader->scale,
+	      reader->delay, 
+//AG Multi: The following may need to be repeated for each oid_str
+	      reader->delta, reader->divisor, 
+	      0, reader->panel,
 	      format, reader->hideExtra, elements);
       gkrellm_save_chartconfig(f, reader->chart_config, PLUGIN_CONFIG_KEYWORD, label);
       g_free(label);
@@ -687,6 +712,7 @@ load_plugin_config(gchar *config_line)
   gchar   bufo[CFG_BUFSIZE], bufu[CFG_BUFSIZE];
   gchar   buft[CFG_BUFSIZE], peer[CFG_BUFSIZE];
   gchar   buff[CFG_BUFSIZE], bufe[CFG_BUFSIZE];
+  gint    old_scale;
   gint    n;
 
   if (sscanf(config_line, GKRELLM_CHARTCONFIG_KEYWORD " %s %[^\n]", bufl, bufc) == 2) {
@@ -720,25 +746,29 @@ load_plugin_config(gchar *config_line)
   
   reader = g_new0(Reader, 1); 
 
+  /* The layout of a config file entry is given by one of the following formats */
+  /* unit and scale are not used, but left in place in the config file */
   n = sscanf(config_line, 
-		"%s %[^:]://%[^@]@%[^:]:%[^:]:%d/%s %s %d %d %d %d %s %d %s",
+		"%s %[^:]://%[^@]@%[^:]:%[^:]:%d/%s %s %d %d %d %d %d %s %d %s",
 	     bufl, proto, bufc, buft, bufp, &reader->port, 
 	     bufo, bufu,
-//AG Multi: Some of the following may need to be repeated
-	     &reader->delay, &reader->delta,
-	     &reader->divisor, &reader->scale,
+	     &reader->delay, 
+//AG Multi: The following may need to be repeated for each oid_str
+	     &reader->delta, &reader->divisor, 
+	     &old_scale, &reader->panel,
 	     buff, &reader->hideExtra, bufe);
   if (n >= 6) {
 	g_snprintf(peer, CFG_BUFSIZE, "%s:%s", buft, bufp);
 	peer[CFG_BUFSIZE-1] = '\0';
   } else
 	  n = sscanf(config_line, 
-			"%s %[^:]://%[^@]@%[^:]:%d/%s %s %d %d %d %d %s %d %s",
+			"%s %[^:]://%[^@]@%[^:]:%d/%s %s %d %d %d %d %d %s %d %s",
 	     bufl, proto, bufc, peer, &reader->port, 
 	     bufo, bufu,
-//AG Multi: Some of the following may need to be repeated
-	     &reader->delay, &reader->delta,
-	     &reader->divisor, &reader->scale,
+	     &reader->delay, 
+//AG Multi: The following may need to be repeated for each oid_str
+	     &reader->delta, &reader->divisor, 
+	     &old_scale, &reader->panel,
 	     buff, &reader->hideExtra, bufe);
   if (n >= 7)
     {
@@ -752,13 +782,14 @@ load_plugin_config(gchar *config_line)
 	gkrellm_dup_string(&reader->oid_base, bufo);
 	/* Note, bufu is ignored, but left in place in the config file */
 
-	if (n >= 12) {
+	if (n >= 13) {
 	    gkrellm_dup_string(&reader->formatString, buff);
 	} else {
 	    gkrellm_dup_string(&reader->formatString, DEFAULT_FORMAT);
+	    reader->panel = FALSE;
 	}
 
-	if (n >= 14) {
+	if (n >= 15) {
 	    if (bufe[0] == '_') {
 		gkrellm_dup_string(&reader->oid_elements, &bufe[1]);
 	    } else {
@@ -767,6 +798,7 @@ load_plugin_config(gchar *config_line)
 	    g_strdelimit(reader->oid_elements, "_", ' ');
 	} else {
 	    gkrellm_dup_string(&reader->oid_elements, "");
+	    reader->hideExtra = FALSE;
 	}
 	prepare_oid_str (reader);
 
@@ -805,6 +837,9 @@ apply_plugin_config()
       i = 0;
       reader = g_new0(Reader, 1);
 
+      /* The order of this code must follow reader_clist, */
+      /* which is based on reader_title[], defined above */
+
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
       gkrellm_dup_string(&reader->label, name);
 
@@ -841,7 +876,7 @@ apply_plugin_config()
       reader->delta = (strcmp(name, "yes") == 0) ? TRUE : FALSE;
 
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
-      reader->scale = (strcmp(name, "yes") == 0) ? TRUE : FALSE;
+      reader->panel = (strcmp(name, "yes") == 0) ? TRUE : FALSE;
 
       if (!readers)
           readers = reader;
@@ -860,16 +895,19 @@ reset_entries()
 {
   gtk_entry_set_text(GTK_ENTRY(label_entry), "");
   gtk_entry_set_text(GTK_ENTRY(peer_entry), "");
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON(port_spin), DEFAULT_PORT);
   // gtk_entry_set_text(GTK_ENTRY(port_entry), "");
   gtk_entry_set_text(GTK_ENTRY(community_entry), "");
   gtk_entry_set_text(GTK_ENTRY(oid_entry), "");
   gtk_entry_set_text(GTK_ENTRY(elements_entry), "");
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON(freq_spin), DEFAULT_FREQ);
   // gtk_entry_set_text(GTK_ENTRY(freq_entry), "");
-  gtk_entry_set_text(GTK_ENTRY(format_entry), "");
+  gtk_entry_set_text(GTK_ENTRY(format_entry), DEFAULT_FORMAT);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON(div_spin), DEFAULT_DIVISOR);
   // gtk_entry_set_text(GTK_ENTRY(div_entry), "");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(hide_button), FALSE);
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(delta_button), FALSE);
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(scale_button), TRUE);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(panel_button), FALSE);
 }
 
 
@@ -879,6 +917,9 @@ cb_clist_selected(GtkWidget *clist, gint row, gint column,
 {
   gchar           *s;
   gint            state, i;
+
+  /* The order of this code must follow reader_clist, */
+  /* which is based on reader_title[], defined above */
 
   i = 0;
   gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
@@ -919,7 +960,7 @@ cb_clist_selected(GtkWidget *clist, gint row, gint column,
 
   gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
   state = (strcmp(s, "yes") == 0) ? TRUE : FALSE;
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(scale_button), state);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(panel_button), state);
 
   selected_row = row;
 }
@@ -975,6 +1016,8 @@ cb_enter(GtkWidget *widget)
   gint            i;
 
   i = 0;
+  /* The order of this list must follow reader_clist, */
+  /* which is based on reader_title[], defined above */
   buf[i++] = gkrellm_gtk_entry_get_text(&label_entry);
   buf[i++] = gkrellm_gtk_entry_get_text(&peer_entry);
   buf[i++] = gkrellm_gtk_entry_get_text(&port_spin);
@@ -986,7 +1029,7 @@ cb_enter(GtkWidget *widget)
   buf[i++] = gkrellm_gtk_entry_get_text(&div_spin);
   buf[i++] = GTK_TOGGLE_BUTTON(hide_button)->active ? "yes" : "no";
   buf[i++] = GTK_TOGGLE_BUTTON(delta_button)->active ? "yes" : "no";
-  buf[i++] = GTK_TOGGLE_BUTTON(scale_button)->active ? "yes" : "no";
+  buf[i++] = GTK_TOGGLE_BUTTON(panel_button)->active ? "yes" : "no";
 
   /* validate we have input */
   if (!*(buf[1]) || !*(buf[2]) || !*(buf[3]) || !*(buf[4]))
@@ -1066,8 +1109,10 @@ static gchar    *plugin_info_text[] = {
 "\n",
 "<i>Format -", " specifies the chart label format to be overlayed over the chart.\n"
 "The position codes defined under General Info are available as well as:\n"
-"$M the maximum chart value, $L the Label specified for the chart,\n"
-"and $0 up to $9 for the values returned for the defined OID's.\n"
+"$L the Label specified for the chart,\n"
+"$M the maximum chart value, $I the sample interval,\n"
+"and $0 up to $9 and $S0 up to $S9 for the values, or the\n"
+"auto scaled values respectively, returned for the defined OID's.\n"
 "\n"
 "Some examples:\n"
 "\n"
@@ -1108,13 +1153,6 @@ static gchar    *plugin_about_text =
    "http://triq.net/gkrellm.html\n\n"
    "Released under the GNU Public Licence with OpenSSL exemption"
 ;
-
-static gchar *reader_title[CLIST_WIDTH] =
-{ "Label", "Peer", "Port",
-  "Community", "OID", "Elements",
-  "Freq", "Format", "Divisor", 
-  "Hide", "Delta", "Scale" };
-
 static void
 create_plugin_tab(GtkWidget *tab_vbox)
 {
@@ -1142,6 +1180,11 @@ create_plugin_tab(GtkWidget *tab_vbox)
 /* --- Setup tab */
 	vbox = gkrellm_gtk_framed_notebook_page(tabs, "Setup");
 
+	/* This order reflects the display format of the config table */
+	/* It maps elements to their respective static GtkWidget's/GtkObject's, */
+	/* and initializes the config table to default values */
+
+	/* This is the first line of the layout */
 	hbox = gtk_hbox_new(FALSE,0);
 
 	label = gtk_label_new("Label : ");
@@ -1158,17 +1201,19 @@ create_plugin_tab(GtkWidget *tab_vbox)
 
 	label = gtk_label_new("Port : ");
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
-	port_spin_adj = gtk_adjustment_new (161, 1, 65535, 1, 10, 10);
+	port_spin_adj = gtk_adjustment_new (DEFAULT_PORT, 1, 65535, 1, 10, 10);
 	port_spin = gtk_spin_button_new (GTK_ADJUSTMENT (port_spin_adj), 1, 0);
 	gtk_box_pack_start(GTK_BOX(hbox),port_spin,FALSE,FALSE,0);
 
 	label = gtk_label_new("Freq : ");
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
-	freq_spin_adj = gtk_adjustment_new (100, 2, 6000, 2, 100, 100);
+	freq_spin_adj = gtk_adjustment_new (DEFAULT_FREQ, 2, 6000, 2, 100, 100);
 	freq_spin = gtk_spin_button_new (GTK_ADJUSTMENT (freq_spin_adj), 1, 0);
 	gtk_box_pack_start(GTK_BOX(hbox),freq_spin,FALSE,FALSE,0);
 
 	gtk_container_add(GTK_CONTAINER(vbox),hbox);
+
+	/* This is the second line of the layout */
 	hbox = gtk_hbox_new(FALSE,0);
 
 	label = gtk_label_new("Community : ");
@@ -1190,6 +1235,8 @@ create_plugin_tab(GtkWidget *tab_vbox)
 	gtk_box_pack_start(GTK_BOX(hbox),elements_entry,FALSE,FALSE,0);
 
 	gtk_container_add(GTK_CONTAINER(vbox),hbox);
+
+	/* This is the third line of the layout */
 	hbox = gtk_hbox_new(FALSE,0);
 
 	label = gtk_label_new("Format : ");
@@ -1200,7 +1247,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
 
 	label = gtk_label_new("Divisor : ");
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
-	div_spin_adj = gtk_adjustment_new (1, 0, 1024, 1, 1, 1);
+	div_spin_adj = gtk_adjustment_new (DEFAULT_DIVISOR, 0, 1024, 1, 1, 1);
 	div_spin = gtk_spin_button_new (GTK_ADJUSTMENT (div_spin_adj), 1, 0);
 	gtk_box_pack_start(GTK_BOX(hbox),div_spin,FALSE,FALSE,0);
 
@@ -1210,8 +1257,8 @@ create_plugin_tab(GtkWidget *tab_vbox)
         delta_button = gtk_check_button_new_with_label("Compute delta");
         gtk_box_pack_start(GTK_BOX(hbox),delta_button,FALSE,FALSE,0);
 
-        scale_button = gtk_check_button_new_with_label("Auto scale");
-        gtk_box_pack_start(GTK_BOX(hbox),scale_button,FALSE,FALSE,0);
+        panel_button = gtk_check_button_new_with_label("Create Panel");
+        gtk_box_pack_start(GTK_BOX(hbox),panel_button,FALSE,FALSE,0);
 
         button = gtk_button_new_with_label("Probe");
         gtk_signal_connect(GTK_OBJECT(button), "clicked",
@@ -1220,6 +1267,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
 
 	gtk_container_add(GTK_CONTAINER(vbox),hbox);
 
+	/* This is the fourth line of the layout */
         hbox = gtk_hbox_new(FALSE, 3);
         gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 2);
 	/*
@@ -1255,11 +1303,14 @@ create_plugin_tab(GtkWidget *tab_vbox)
         gtk_box_pack_start(GTK_BOX(hbox), button, TRUE, TRUE, 4);
 
 
+	/* And finally the scrolled item list of the layout */
         scrolled = gtk_scrolled_window_new(NULL, NULL);
         gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled),
                         GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
         gtk_box_pack_start(GTK_BOX(vbox), scrolled, TRUE, TRUE, 0);
 
+        /* This defines the clist for all interactions with the config table */
+	/* It follows the order of reader_title[] which is defined above */
 	reader_clist = gtk_clist_new_with_titles(CLIST_WIDTH, reader_title);	
         gtk_clist_set_shadow_type (GTK_CLIST(reader_clist), GTK_SHADOW_OUT);
 	gtk_clist_set_column_width (GTK_CLIST(reader_clist), 1, 100);
@@ -1275,6 +1326,8 @@ create_plugin_tab(GtkWidget *tab_vbox)
         for (reader = readers; reader; reader = reader->next)
 	  {
 	    i = 0;
+	    /* The order of this list must follow reader_clist, */
+	    /* which is based on reader_title[], defined above */
 	    buf[i++] = reader->label;
 	    buf[i++] = reader->peer;
 	    buf[i++] = g_strdup_printf("%d", reader->port);
@@ -1286,7 +1339,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
 	    buf[i++] = g_strdup_printf("%d", reader->divisor);
 	    buf[i++] = reader->hideExtra ? "yes" : "no";
 	    buf[i++] = reader->delta ? "yes" : "no";
-	    buf[i++] = reader->scale ? "yes" : "no";
+	    buf[i++] = reader->panel ? "yes" : "no";
 	    row = gtk_clist_append(GTK_CLIST(reader_clist), buf);
 	  }
 
