@@ -1,5 +1,5 @@
-/* SNMP reader plugin for GKrellM 
-|  Copyright (C) 2000-2009  Christian W. Zuckschwerdt <zany@triq.net>
+/* SNMP reader plugin for GKrellM.
+|  Copyright (C) 2000-2020  Christian W. Zuckschwerdt <zany@triq.net>
 |  Copyright (C) 2009  Alfred Ganz alfred-ganz:at:agci.com
 |
 |  Author:  Christian W. Zuckschwerdt  <zany@triq.net>  http://triq.net/
@@ -116,11 +116,11 @@ simpleSNMPinit()
     snmp_set_do_debugging(1);
 #endif /* DEBUG_SNMP */
 
-    init_mib();
+    netsnmp_init_mib();
 }
 
 gchar *
-simpleSNMPprobe(gchar *peer, gint port, gchar *community)
+simpleSNMPprobe(gchar *peer, gint port, gint vers, gchar *community)
 {
     oid sysDescr[MAX_OID_LEN];
     size_t sysDescr_length;
@@ -174,7 +174,7 @@ simpleSNMPprobe(gchar *peer, gint port, gchar *community)
     /* initialize session to default values */
     snmp_sess_init( &session );
 
-    session.version = SNMP_VERSION_1;
+    session.version = vers == 2 ? SNMP_VERSION_2c : SNMP_VERSION_1;
     session.community = (guchar *)community;
     session.community_len = strlen(community);
     session.peername = peer;
@@ -328,6 +328,15 @@ snmp_input(int op,
 		    result_n[i] = *vars->val.integer;
 		    result[i] = g_strdup_printf("%ld", *vars->val.integer);
 		    break;
+		case ASN_COUNTER64:
+		    asn1_type[i] = ASN_INTEGER;
+		    result_n[i] = vars->val.counter64->low; // TODO: this ignores upper 32 "high" bits
+#ifdef G_GUINT64_FORMAT
+            result[i] = g_strdup_printf("%" G_GUINT64_FORMAT, ((guint64)vars->val.counter64->high << 32) | vars->val.counter64->low);
+#else
+		    result[i] = g_strdup_printf("%lu", vars->val.counter64->low);
+#endif
+		    break;
 		default:
 		    i--;
 		    fprintf(stderr, "recv unknown ASN type: %d - "
@@ -410,6 +419,7 @@ simpleSNMPupdate()
 struct snmp_session *
 simpleSNMPopen(gchar *peername,
 	       gint port,
+	       gint vers,
 	       gchar *community,
 	       void *data)
 {
@@ -420,7 +430,7 @@ simpleSNMPopen(gchar *peername,
      */
     snmp_sess_init( &session );
 
-    session.version = SNMP_VERSION_1;
+    session.version = vers == 2 ? SNMP_VERSION_2c : SNMP_VERSION_1;
     session.community = (guchar *)community;
     session.community_len = strlen(community);
     session.peername = peername;

@@ -1,5 +1,5 @@
-/* SNMP reader plugin for GKrellM 
-|  Copyright (C) 2000-2009  Christian W. Zuckschwerdt <zany@triq.net>
+/* SNMP reader plugin for GKrellM.
+|  Copyright (C) 2000-2020  Christian W. Zuckschwerdt <zany@triq.net>
 |  Copyright (C) 2009  Alfred Ganz alfred-ganz:at:agci.com
 |
 |  Author:  Christian W. Zuckschwerdt  <zany@triq.net>  http://triq.net/
@@ -53,8 +53,8 @@ struct input_data {
 /* The interface functions for SNMP */
 
 extern	void simpleSNMPinit();
-extern	gchar *simpleSNMPprobe(gchar *peer, gint port, gchar *community);
-extern	struct snmp_session *simpleSNMPopen(gchar *peername, gint port,
+extern	gchar *simpleSNMPprobe(gchar *peer, gint port, gint vers, gchar *community);
+extern	struct snmp_session *simpleSNMPopen(gchar *peername, gint port, gint vers,
 					gchar *community, void *data);
 extern	void simpleSNMPupdate();
 extern	gint simpleSNMPsend(struct snmp_session *session, 
