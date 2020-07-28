@@ -1,5 +1,5 @@
-/* SNMP reader plugin for GKrellM 
-|  Copyright (C) 2000-2009  Christian W. Zuckschwerdt <zany@triq.net>
+/* SNMP reader plugin for GKrellM.
+|  Copyright (C) 2000-2020  Christian W. Zuckschwerdt <zany@triq.net>
 |  Copyright (C) 2009  Alfred Ganz alfred-ganz:at:agci.com
 |
 |  Author:  Christian W. Zuckschwerdt  <zany@triq.net>  http://triq.net/
@@ -38,8 +38,8 @@
 #include <simpleSNMP.h>
 
 
-#define SNMP_PLUGIN_MAJOR_VERSION "1"
-#define SNMP_PLUGIN_MINOR_VERSION "1.1"
+#define SNMP_PLUGIN_MAJOR_VERSION 1
+#define SNMP_PLUGIN_MINOR_VERSION 2
 
 
 /* The name of the plugin in the Configuration menu */
@@ -56,6 +56,7 @@
 
 /* The default settings for spin buttons, so they can be reset */
 #define	DEFAULT_PORT		161
+#define	DEFAULT_VERS		1
 #define	DEFAULT_FREQ		100
 #define	DEFAULT_DIVISOR		1
 
@@ -68,6 +69,7 @@ struct Reader {
 	gchar			*label;
 	gchar			*peer;
 	gint			port;
+	gint			vers;
 	gchar			*community;
 	gchar			*oid_base;
 	gchar			*oid_elements;
@@ -129,8 +131,9 @@ render_error(Reader *reader)
 {
     gchar *message = NULL;
 
-    message = g_strdup_printf ("%s (snmp://%s@%s:%d/%s[%s])\n%s",
+    message = g_strdup_printf ("%s (snmp%s://%s@%s:%d/%s[%s])\n%s",
 			    reader->label,
+			    reader->vers == 2 ? "-v2c" : "",
 			    reader->community,
 			    reader->peer, reader->port,
 			    reader->oid_base,
@@ -296,8 +299,9 @@ render_info(Reader *reader)
 	temp_buf = NULL;
     }
 
-    return g_strdup_printf("%s: (snmp://%s@%s:%d/%s[%s]) Uptime: %dd %d:%d%s",
+    return g_strdup_printf("%s: (snmp%s://%s@%s:%d/%s[%s]) Uptime: %dd %d:%d%s",
 			reader->label,
+			reader->vers == 2 ? "-v2c" : "",
 			reader->community,
 			reader->peer, reader->port,
 			reader->oid_base,
@@ -369,6 +373,7 @@ update_plugin()
 	if ( (! reader->session) && (! reader->old_error) ) {
 	    reader->session = simpleSNMPopen(reader->peer,
 					     reader->port,
+					     reader->vers,
 					     reader->community,
 					     &reader->new_data);
 	    if (! reader->session) {
@@ -634,12 +639,12 @@ prepare_oid_str (Reader *reader)
 
 /* Config section */
 
-#define CLIST_WIDTH 12
+#define CLIST_WIDTH 13
 
 /* This list represents the internal order and elements of each config table, */
 /* it is used for the definition of reader_clist in create_plugin_tab() below */
 static gchar *reader_title[CLIST_WIDTH] =
-{ "Label", "Peer", "Port",
+{ "Label", "Peer", "Port", "V",
   "Community", "OID", "Elements",
   "Freq", "Format", "Divisor", 
   "Hide", "Delta", "Panel" };
@@ -650,6 +655,8 @@ static GtkWidget        *label_entry;
 static GtkWidget        *peer_entry;
 static GtkObject        *port_spin_adj;
 static GtkWidget        *port_spin;
+static GtkObject        *vers_spin_adj;
+static GtkWidget        *vers_spin;
 static GtkWidget        *community_entry;
 static GtkWidget        *oid_entry;
 static GtkWidget        *elements_entry;
@@ -685,9 +692,11 @@ save_plugin_config(FILE *f)
 
       /* The layout of a config file entry is given by the following format, */
       /* unit and scale are not used, but left in place in the config file */
-      fprintf(f, "%s %s snmp://%s@%s:%d/%s %s %d %d %d %d %d %s %d %s\n",
+      fprintf(f, "%s %s snmp%s://%s@%s:%d/%s %s %d %d %d %d %d %s %d %s\n",
 	      PLUGIN_CONFIG_KEYWORD,
-	      label, reader->community,
+	      label,
+		  reader->vers == 2 ? "-v2c" : "",
+		  reader->community,
 	      reader->peer, reader->port,
 	      reader->oid_base, unit,
 	      reader->delay, 
@@ -772,7 +781,9 @@ load_plugin_config(gchar *config_line)
 	     buff, &reader->hideExtra, bufe);
   if (n >= 7)
     {
-      if (g_strcasecmp(proto, "snmp") == 0) {
+      if (g_ascii_strcasecmp(proto, "snmp") == 0
+      		|| g_ascii_strcasecmp(proto, "snmp-v2c") == 0) {
+	reader->vers = g_ascii_strcasecmp(proto, "snmp-v2c") == 0 ? 2 : 1;
 	gkrellm_dup_string(&reader->label, bufl);
 	gkrellm_dup_string(&reader->community, bufc);
 	gkrellm_dup_string(&reader->peer, peer);
@@ -850,6 +861,9 @@ apply_plugin_config()
       reader->port = atoi(name);
 
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
+      reader->vers = atoi(name);
+
+      gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
       gkrellm_dup_string(&reader->community, name);
 
       gtk_clist_get_text(GTK_CLIST(reader_clist), row, i++, &name);
@@ -897,6 +911,8 @@ reset_entries()
   gtk_entry_set_text(GTK_ENTRY(peer_entry), "");
   gtk_spin_button_set_value (GTK_SPIN_BUTTON(port_spin), DEFAULT_PORT);
   // gtk_entry_set_text(GTK_ENTRY(port_entry), "");
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON(vers_spin), DEFAULT_VERS);
+  // gtk_entry_set_text(GTK_ENTRY(vers_entry), "");
   gtk_entry_set_text(GTK_ENTRY(community_entry), "");
   gtk_entry_set_text(GTK_ENTRY(oid_entry), "");
   gtk_entry_set_text(GTK_ENTRY(elements_entry), "");
@@ -931,6 +947,10 @@ cb_clist_selected(GtkWidget *clist, gint row, gint column,
   gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
   gtk_entry_set_text(GTK_ENTRY(port_spin), s);
   //  gtk_spin_button_get_value_as_int(GTK_SPINBUTTON(port_spin), 161);
+
+  gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
+  gtk_entry_set_text(GTK_ENTRY(vers_spin), s);
+  //  gtk_spin_button_get_value_as_int(GTK_SPINBUTTON(vers_spin), 1);
 
   gtk_clist_get_text(GTK_CLIST(clist), row, i++, &s);
   gtk_entry_set_text(GTK_ENTRY(community_entry), s);
@@ -1021,6 +1041,7 @@ cb_enter(GtkWidget *widget)
   buf[i++] = gkrellm_gtk_entry_get_text(&label_entry);
   buf[i++] = gkrellm_gtk_entry_get_text(&peer_entry);
   buf[i++] = gkrellm_gtk_entry_get_text(&port_spin);
+  buf[i++] = gkrellm_gtk_entry_get_text(&vers_spin);
   buf[i++] = gkrellm_gtk_entry_get_text(&community_entry);
   buf[i++] = gkrellm_gtk_entry_get_text(&oid_entry);
   buf[i++] = gkrellm_gtk_entry_get_text(&elements_entry);
@@ -1068,11 +1089,13 @@ cb_probe(GtkWidget *widget)
 {
 	gchar *peer;
 	gint port;
+	gint vers;
 	gchar *community;
 	gchar *probe;
 
 	peer = gkrellm_gtk_entry_get_text(&peer_entry);
 	port = atoi(gkrellm_gtk_entry_get_text(&port_spin));
+	vers = atoi(gkrellm_gtk_entry_get_text(&vers_spin));
 	community = gkrellm_gtk_entry_get_text(&community_entry);
 
 	/* validate we have input */
@@ -1082,7 +1105,7 @@ cb_probe(GtkWidget *widget)
 			"Peer, Port and Community must be entered.");
 		return;
 	}
-	probe = simpleSNMPprobe(peer, port, community);
+	probe = simpleSNMPprobe(peer, port, vers, community);
 	gkrellm_config_message_dialog("SNMP Probe", probe);
 	g_free(probe);
 }
@@ -1146,9 +1169,9 @@ static gchar    *plugin_info_text[] = {
 ;
 
 static gchar    *plugin_about_text =
-   "SNMP plugin  Version %s.%s\n"
+   "SNMP plugin  Version %d.%d\n"
    "GKrellM SNMP monitor Plugin\n\n"
-   "Copyright (C) 2000-2006 Christian W. Zuckschwerdt <zany@triq.net>\n"
+   "Copyright (C) 2000-2020 Christian W. Zuckschwerdt <zany@triq.net>\n"
    "\n"
    "http://triq.net/gkrellm.html\n\n"
    "Released under the GNU Public Licence with OpenSSL exemption"
@@ -1204,6 +1227,12 @@ create_plugin_tab(GtkWidget *tab_vbox)
 	port_spin_adj = gtk_adjustment_new (DEFAULT_PORT, 1, 65535, 1, 10, 10);
 	port_spin = gtk_spin_button_new (GTK_ADJUSTMENT (port_spin_adj), 1, 0);
 	gtk_box_pack_start(GTK_BOX(hbox),port_spin,FALSE,FALSE,0);
+
+	label = gtk_label_new("v : ");
+	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
+	vers_spin_adj = gtk_adjustment_new (DEFAULT_VERS, 1, 2, 1, 1, 1);
+	vers_spin = gtk_spin_button_new (GTK_ADJUSTMENT (vers_spin_adj), 1, 0);
+	gtk_box_pack_start(GTK_BOX(hbox),vers_spin,FALSE,FALSE,0);
 
 	label = gtk_label_new("Freq : ");
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
@@ -1331,6 +1360,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
 	    buf[i++] = reader->label;
 	    buf[i++] = reader->peer;
 	    buf[i++] = g_strdup_printf("%d", reader->port);
+	    buf[i++] = g_strdup_printf("%d", reader->vers);
 	    buf[i++] = reader->community;
 	    buf[i++] = reader->oid_base;
 	    buf[i++] = reader->oid_elements;
