@@ -126,10 +126,18 @@ scale(glong num, gboolean scale_it)
 }
 
 
-static gchar *
+static void
 render_error(Reader *reader)
 {
-    gchar *message = NULL;
+    gchar *message;
+
+	if (reader->old_error && !strcmp(reader->old_error, reader->error)) {
+		// don't repeat the same error message
+		g_free(reader->error);
+
+	} else {
+		g_free(reader->old_error);
+		reader->old_error = reader->error;
 
     message = g_strdup_printf ("%s (snmp%s://%s@%s:%d/%s[%s])\n%s",
 			    reader->label,
@@ -141,7 +149,9 @@ render_error(Reader *reader)
 			    reader->error);
     /* Note, the title is currently not displayed! */
     gkrellm_message_dialog("SNMP Plugin Error", message);
-    return message;
+
+		g_free(message);
+	}
 }
 
 
@@ -370,19 +380,16 @@ update_plugin()
     /* Send new SNMP requests */
     for (reader = readers; reader ; reader = reader->next)
     {
-	if ( (! reader->session) && (! reader->old_error) ) {
+	if (! reader->session) {
 	    reader->session = simpleSNMPopen(reader->peer,
 					     reader->port,
 					     reader->vers,
 					     reader->community,
 					     &reader->new_data);
 	    if (! reader->session) {
-		if (reader->error) g_free (reader->error);
 		reader->error = reader->new_data.error;
 		reader->new_data.error = NULL;
-		text = reader->old_error;
-		reader->old_error = render_error(reader);
-		g_free(text);
+		render_error(reader);
 	    }
 	    reader->new_data.new = 0;
 	    reader->new = 0;
@@ -391,12 +398,9 @@ update_plugin()
 	/* Update new data, if available */
 	if (reader->session && reader->new_data.new != 0) {
 	    if (reader->new_data.error) {
-		if (reader->error) g_free (reader->error);
 		reader->error = reader->new_data.error;
 		reader->new_data.error = NULL;
-		if (text) g_free (text);
-		text = render_error(reader);
-		if (text) g_free (text);
+		render_error(reader);
 	    } else {
 		reader->old_sample_time = reader->sample_time;
 		reader->sample_time = reader->new_data.sample_n[0];
@@ -418,13 +422,10 @@ update_plugin()
 	if ( (reader->session) && ((GK.timer_ticks % reader->delay) == 0)) {
 	    if (!simpleSNMPsend(reader->session, reader->oid_str, 
 							reader->num_oid_str)) {
-		if (reader->error) g_free (reader->error);
 		reader->error = reader->new_data.error;
 		reader->new_data.error = NULL;
 		reader->new_data.new = 0;
-		if (text) g_free (text);
-		text = render_error(reader);
-		if (text) g_free (text);
+		render_error(reader);
 	    }
 	}
 
@@ -595,7 +596,6 @@ prepare_oid_str (Reader *reader)
 	gchar *elements;
 	gchar *elementp;
 	gchar *element;
-	gchar *text = NULL;
 	gint i;
 
 	/* The first oid_str is for system up time */
@@ -627,11 +627,9 @@ prepare_oid_str (Reader *reader)
 
 	for (i = 0; i < reader->num_oid_str; i++) {
 	    if (!simpleSNMPcheck_oid(reader->oid_str[i])) {
-		if (reader->error) g_free (reader->error);
 		reader->error = g_strdup_printf("Error parsing oid: %s", 
 							reader->oid_str[i]);
-		text = render_error (reader);
-		if (text) g_free (text);
+		render_error (reader);
 		break;
 	    }
 	}
@@ -752,7 +750,8 @@ load_plugin_config(gchar *config_line)
 	gkrellm_load_chartconfig(&nreader->chart_config, bufc, MAX_CHART_VALUES);
   	return;
   }
-  
+
+  // TODO: re-enabling the plugin will load a duplicate config and crash
   reader = g_new0(Reader, 1); 
 
   /* The layout of a config file entry is given by one of the following formats */
@@ -1140,7 +1139,7 @@ static gchar    *plugin_info_text[] = {
 "Some examples:\n"
 "\n"
 "(1)\n"
-"The ambiente temperature sensor for some net-snmp server\n"
+"The ambient temperature sensor for some net-snmp server\n"
 "public / 192.168.1.2 port 161 oid .1.3.6.1.4.1.2021.8.1.101.1\n"
 "\n"
 "That is:\n"
@@ -1224,19 +1223,19 @@ create_plugin_tab(GtkWidget *tab_vbox)
 
 	label = gtk_label_new("Port : ");
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
-	port_spin_adj = gtk_adjustment_new (DEFAULT_PORT, 1, 65535, 1, 10, 10);
+	port_spin_adj = gtk_adjustment_new (DEFAULT_PORT, 1, 65535, 1, 10, 0);
 	port_spin = gtk_spin_button_new (GTK_ADJUSTMENT (port_spin_adj), 1, 0);
 	gtk_box_pack_start(GTK_BOX(hbox),port_spin,FALSE,FALSE,0);
 
 	label = gtk_label_new("v : ");
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
-	vers_spin_adj = gtk_adjustment_new (DEFAULT_VERS, 1, 2, 1, 1, 1);
+	vers_spin_adj = gtk_adjustment_new (DEFAULT_VERS, 1, 2, 1, 1, 0);
 	vers_spin = gtk_spin_button_new (GTK_ADJUSTMENT (vers_spin_adj), 1, 0);
 	gtk_box_pack_start(GTK_BOX(hbox),vers_spin,FALSE,FALSE,0);
 
 	label = gtk_label_new("Freq : ");
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
-	freq_spin_adj = gtk_adjustment_new (DEFAULT_FREQ, 2, 6000, 2, 100, 100);
+	freq_spin_adj = gtk_adjustment_new (DEFAULT_FREQ, 2, 6000, 2, 100, 0);
 	freq_spin = gtk_spin_button_new (GTK_ADJUSTMENT (freq_spin_adj), 1, 0);
 	gtk_box_pack_start(GTK_BOX(hbox),freq_spin,FALSE,FALSE,0);
 
@@ -1276,7 +1275,7 @@ create_plugin_tab(GtkWidget *tab_vbox)
 
 	label = gtk_label_new("Divisor : ");
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
-	div_spin_adj = gtk_adjustment_new (DEFAULT_DIVISOR, 0, 1024, 1, 1, 1);
+	div_spin_adj = gtk_adjustment_new (DEFAULT_DIVISOR, 0, 1024, 1, 1, 0);
 	div_spin = gtk_spin_button_new (GTK_ADJUSTMENT (div_spin_adj), 1, 0);
 	gtk_box_pack_start(GTK_BOX(hbox),div_spin,FALSE,FALSE,0);
 

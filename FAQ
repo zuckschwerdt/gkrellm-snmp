@@ -6,7 +6,7 @@ GKrellM_SNMP FAQ:
 
 The libcrypto is part of OpenSSL.
 Which libs is libsnmp compiled against?
-Try 'ldd /usr/lib/libsnmp.so' YMMV
+Try `ldd /usr/lib/libsnmp.so` YMMV
 Mine is compiled staticly -- so I don't need to link against any lib.
 
 
@@ -24,8 +24,6 @@ possible.
 > gkrellm_snmp.o(.text+0xb10): first defined here
 
 Try to change the name of my function. Run
- mv gkrellm_snmp.c gkrellm_snmp.c.orig
- sed -e 's/snmp_parse_oid/my_snmp_parse_oid/g'
-       gkrellm_snmp.c.orig >gkrellm_snmp.c
 
-
+    mv gkrellm_snmp.c gkrellm_snmp.c.orig
+    sed -e 's/snmp_parse_oid/my_snmp_parse_oid/g' gkrellm_snmp.c.orig >gkrellm_snmp.c

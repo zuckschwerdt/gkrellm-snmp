@@ -11,43 +11,48 @@ GKrellM_SNMP README
 
 Prerequisites:
 --------------
+
 You need a SNMP library to run this plugin.
 You also need the SNMP header (include) files for building (as well as
 GTK-2.0 and GKrellM headers).
 Tested with UCD-SNMP and Net-SNMP.
-(If you want to link to the -old- UCD-SNMP try "make ucdsnmp").
+(If you want to link to the -old- UCD-SNMP try `make ucdsnmp`).
 
 This means for e.g. Debian/Ubuntu you need to install libsnmp-dev
 (and libgtk2.0-dev / gkrellm as well).
 
+
 Compiling:
 ----------
 
-* For linux: just run the normal 'make'.
-* For freebsd: run 'make freebsd'.
-* For OS X: run 'make osx'.
+* For linux: just run the normal `make`.
+* For freebsd: run `make freebsd`.
+* For OS X: run `make osx`.
 
 
 Installing:
 -----------
-Running 'make install-user' will place the plugin in your current home
-directory under $HOME/.gkrellm2/plugins.
-Running 'make install' as superuser will place the plugin under
-/usr/lib/gkrellm2/plugins. You can also manually place the resulting
-gkrellm_snmp.so under $HOME/.gkrellm2/plugins. After restarting gkrellm, you
-should be able to enable it in the gkrellm plugins configuration menu.
+
+Running `make install-user` will place the plugin in your current home
+directory under `$HOME/.gkrellm2/plugins`.
+Running `make install` as superuser will place the plugin under
+`/usr/lib/gkrellm2/plugins`. You can also manually place the resulting
+gkrellm_snmp.so under `$HOME/.gkrellm2/plugins`. After restarting gkrellm,
+you should be able to enable it in the gkrellm plugins configuration menu.
 
 
 Troubleshooting:
 ----------------
-If you have trouble compiling the plugin. Make sure you have gtk 2 and 
-gkrellm >= 2.0.0 and you've installed the gkrellm header files in
-/usr/include/gkrellm or /usr/local/include/gkrellm. If you have placed the
-header files in some other dir, edit GKRELLM_INCLUDE in the Makefile
 
- 
+If you have trouble compiling the plugin. Make sure you have `gtk 2` and
+`gkrellm >= 2.0.0` and you've installed the gkrellm header files in
+`/usr/include/gkrellm` or `/usr/local/include/gkrellm`. If you have placed the
+header files in some other dir, edit `GKRELLM_INCLUDE` in the `Makefile`.
+
+
 Bugs:
 -----
+
 No GKrellm 1.x support anymore. Anyone needing that?
 I do consider this version stable.
 Please mail any problems/bugs to me...
@@ -56,83 +61,87 @@ Please mail any problems/bugs to me...
 Some examples:
 --------------
 
-(1)
+1.
 
-The ambiente temperature sensor for some net-snmp server
+The ambient temperature sensor for some net-snmp server
 
- Peer: 192.168.1.2  Port: 161  Community: public 
- OID: extOutput.1 (= .1.3.6.1.4.1.2021.8.1.101.1 from UCD-SNMP-MIB)
+    Peer: 192.168.1.2  Port: 161  Community: public
+    OID: extOutput.1 (= .1.3.6.1.4.1.2021.8.1.101.1 from UCD-SNMP-MIB)
 
 If you have the needed MIB you can use the symbolic OID form. The name
 is unambiguous but only available if you have the MIB installed.
 
-(2)
+2.
 
 Server CPU load using a string ranging from 0.00 to 1.00
 (e.g. the load factor for the first cpu on that server )
 
- Peer: 192.168.1.3  Port: 161  Community: public
- OID: laLoad.1 (= .1.3.6.1.4.1.2021.10.1.3.1 from UCD-SNMP-MIB)
+    Peer: 192.168.1.3  Port: 161  Community: public
+    OID: laLoad.1 (= .1.3.6.1.4.1.2021.10.1.3.1 from UCD-SNMP-MIB)
 
-(3)
+3.
 
 Server CPU load using integer variable ranging from 0 to 100
 (e.g. the percentile load for the first cpu on that server)
 
- Peer: 192.168.1.4  Port: 161  Community: public
- OID: laLoadInt.1 (= .1.3.6.1.4.1.2021.10.1.5.1 from UCD-SNMP-MIB)
+    Peer: 192.168.1.4  Port: 161  Community: public
+    OID: laLoadInt.1 (= .1.3.6.1.4.1.2021.10.1.5.1 from UCD-SNMP-MIB)
 
-(4)
+4.
 
 Most devices don't support gauges for interface load. They just count
 octets. You can get around that limitation with the delta monitoring
 feature. (eg. monitor packet counters instead of gauges)
 
- Peer: 192.168.1.5  Port: 161  Community: public
- OID: ifInOctets.1 (= .1.3.6.1.2.1.2.2.1.10.1 from RFC1213-MIB)
- or OID: ifOutOctets.1 (= .1.3.6.1.2.1.2.2.1.16.1 from RFC1213-MIB)
+    Peer: 192.168.1.5  Port: 161  Community: public
+    OID: ifInOctets.1 (= .1.3.6.1.2.1.2.2.1.10.1 from RFC1213-MIB)
+    or OID: ifOutOctets.1 (= .1.3.6.1.2.1.2.2.1.16.1 from RFC1213-MIB)
+
 Be sure to check the button "Delta".
 
 You can convert the symbolic OID to numbers and vice-versa with
 snmptranslate:
 
-$ snmptranslate -m all -IR laLoadInt.1
-.1.3.6.1.4.1.2021.10.1.5.1
+    $ snmptranslate -m all -IR laLoadInt.1
+    .1.3.6.1.4.1.2021.10.1.5.1
 
-$ snmptranslate -m all -OnS .1.3.6.1.4.1.2021.10.1.5.1
-UCD-SNMP-MIB::laLoadInt.1
+    $ snmptranslate -m all -OnS .1.3.6.1.4.1.2021.10.1.5.1
+    UCD-SNMP-MIB::laLoadInt.1
 
 
 More interessting OIDs:
 -----------------------
-- Chasis inlet temperature (tested on cisco7204VXR)
-  CISCO-SMI::ciscoMgmt.13.1.3.1.3.1
- .1.3.6.1.4.1.9.9.13.1.3.1.3.1
 
-- Dominik Winter found the following OID's in Cisco's Vendor-MIB
+- Chasis inlet temperature (tested on cisco7204VXR)  
+  CISCO-SMI::ciscoMgmt.13.1.3.1.3.1  
+  .1.3.6.1.4.1.9.9.13.1.3.1.3.1
+
+- Dominik Winter found the following OID's in Cisco's Vendor-MIB  
   (works for his cisco-2514 w/ IOS Version 11.2(5))
 
-  locIfInBitsSec.n  inbound traffic measured in bit/s
+  locIfInBitsSec.n  inbound traffic measured in bit/s  
   .1.3.6.1.4.1.9.2.2.1.1.6.<interface_nr>
 
-  locIfOutBitsSec.n  outbound traffic measured in bit/s
+  locIfOutBitsSec.n  outbound traffic measured in bit/s  
   .1.3.6.1.4.1.9.2.2.1.1.8.<interface_nr>
 
-  locIfInPktsSec.n  inbound traffic measured in pkts/s
+  locIfInPktsSec.n  inbound traffic measured in pkts/s  
   .1.3.6.1.4.1.9.2.2.1.1.7.<interface_nr>
 
-  locIfOutPktsSec.n  outbound traffic measured in pkts/s
+  locIfOutPktsSec.n  outbound traffic measured in pkts/s  
   .1.3.6.1.4.1.9.2.2.1.1.9.<interface_nr>
 
-  avgBusy1  CPU-load sampled over 1 minute
+  avgBusy1  CPU-load sampled over 1 minute  
   .1.3.6.1.4.1.9.2.1.57
 
-  avgBusy5 CPU-load sampled over 5 minutes
+  avgBusy5 CPU-load sampled over 5 minutes  
   .1.3.6.1.4.1.9.2.1.58
 
 Where <interface> means the number of the interface you wish to monitor.
 Be aware that software routers are likely to have this setup
- ifDescr.1 = lo0 ; ifDescr.2 = eth0 ;ifDescr.3 = eth1
+
+    ifDescr.1 = lo0 ; ifDescr.2 = eth0 ;ifDescr.3 = eth1
+
 So if you mean eth0 you need to write "2"!
 
 Be always sure to prepend the leading dot "." it's much like the
@@ -146,20 +155,16 @@ Call for features!
 ------------------
 
 Do you want/need
- monitor multiple oid's on the same server? (snmp bulk get)
- choose between charts and krells?
- SNMP v1, v2, v3 support?
- SNMP privacy options?
-
- Enter peer, port, community and oid in separate fields
- or as snmp://community@peer:port/oid ?
-
- other SNMP lib instead of UCD-SNMPD / better NETNMP support?
- GKrellM pre 1.x or 0.x support/compatibility?
-
- instance mapping?
-
- Diffential monitors (eg. monitor packet counters instead of gauges)?
+- monitor multiple oid's on the same server? (snmp bulk get)
+- choose between charts and krells?
+- SNMP v1, v2, v3 support?
+- SNMP privacy options?
+- Enter peer, port, community and oid in separate fields
+  or as snmp://community@peer:port/oid ?
+- other SNMP lib instead of UCD-SNMPD / better NETNMP support?
+- GKrellM pre 1.x or 0.x support/compatibility?
+- instance mapping?
+- Diffential monitors (eg. monitor packet counters instead of gauges)?
 
 
 Please help:
@@ -170,6 +175,7 @@ Can you give some usage examples?
 
 Tested on:
 ----------
+
 - FreeBSD  4.0 Release   w/ ucd-snmp-4.0.1   libcrypt not needed
 - SuSE Linux 6.4   w/ ucd-snmp-4.0.1
 - SuSE Linux 6.4   w/ ucd-snmp-4.1.1
@@ -183,46 +189,52 @@ Tested on:
 Thanks to:
 ----------
 
- Bill Wilson <billw@gkrellm.net>
- (valuable feedback and last but not least making GKrellM!)
+- Bill Wilson <billw@gkrellm.net>
+  (valuable feedback and last but not least making GKrellM!)
 
- Eike Bernhardt <teefax@pmnet.uni-oldenburg.de>
- (Makefile improvements, Testing on FreeBSD)
+- Eike Bernhardt <teefax@pmnet.uni-oldenburg.de>
+  (Makefile improvements, Testing on FreeBSD)
 
- Shamada Diundra <shamada@pmnet.uni-oldenburg.de>
- (Testing on RedHad Linux)
+- Shamada Diundra <shamada@pmnet.uni-oldenburg.de>
+  (Testing on RedHad Linux)
 
- Stefan Raab <stefan.raab@nextel.com>
- (Fixed ASN.1 return type strangeness with cisco7204VXR router    
+- Stefan Raab <stefan.raab@nextel.com>
+  (Fixed ASN.1 return type strangeness with cisco7204VXR router
   bug report and cisco7204VXR access)
 
- Mikael Blomqvist <micke@altcom.se>
- (GKrellM 1.0.4 changes)
+- Mikael Blomqvist <micke@altcom.se>
+  (GKrellM 1.0.4 changes)
 
- Sami Haahtinen <ressu@debian.org>
- (requested delta monitoring)
+- Sami Haahtinen <ressu@debian.org>
+  (requested delta monitoring)
 
- Peter Herz <peterh@connectnet.com>
- (suggestions on divisor/scaling)
+- Peter Herz <peterh@connectnet.com>
+  (suggestions on divisor/scaling)
 
- Ben Winslow <rain@bluecherry.net>
- (fixed a bug in clist handling)
- 
- Lasse Aagren <lasse@aagren.org>
- (reported config file reading error)
+- Ben Winslow <rain@bluecherry.net>
+  (fixed a bug in clist handling)
 
- Eric Lindvall <eric@5stops.com>
- (fixed a bug concerning the error state)
+- Lasse Aagren <lasse@aagren.org>
+  (reported config file reading error)
 
- Quentin Garnier <cube@netbsd.org>
- (transport:host patch)
+- Eric Lindvall <eric@5stops.com>
+  (fixed a bug concerning the error state)
 
- Juan Manuel Garcia Molina <juanma@debian.org>
- Elmar Hoffmann <elho@elho.net>
- (reported that the chart config isn't saved/restored)
+- Quentin Garnier <cube@netbsd.org>
+  (transport:host patch)
 
- Mark Duling <mark.duling@biola.edu>
- (suggested Makefile improvements for OS-X)
+- Juan Manuel Garcia Molina <juanma@debian.org>
+  Elmar Hoffmann <elho@elho.net>
+  (reported that the chart config isn't saved/restored)
+
+- Mark Duling <mark.duling@biola.edu>
+  (suggested Makefile improvements for OS-X)
+
+- Alfred Ganz <alfred-ganz+gkrellm@agci.com>
+  (major refactoring)
+
+- Martin Ward <martin@gkc.org.uk>
+  (Counter64 code and testing)
 
 
 AUTHOR AND WEBPAGE:

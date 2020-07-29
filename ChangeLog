@@ -1,4 +1,10 @@
 GKrellM_SNMP Changelog:
+=======================
+
+1.2 (2020-08-01)
+ - major refactoring (by Alfred Ganz)
+ - SNMP v2c support
+ - Counter64 support (by Martin Ward)
 
 1.1 (2009-01-03)
  - License clarification (thanks to Debian maintainers)
@@ -12,7 +18,7 @@ GKrellM_SNMP Changelog:
  - net-snmp is the default now, use make ucdsnmp if necessary
  - tcp/udp transport (patch from Quentin Garnier)
  - added chart config save/load functions
- 
+
 0.21 (2003-09-21)
  - some snmp bugfixes
  - tooltips reenabled
