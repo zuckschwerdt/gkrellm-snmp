@@ -449,6 +449,7 @@ snmp_input(int op,
 		    break;
 		case ASN_INTEGER: /* value is a integer */
 		case ASN_COUNTER: /* use as if it were integer */
+		case ASN_COUNTER64: /* use as if it were integer */
 		case ASN_UNSIGNED: /* use as if it were integer */
 		    asn1_type = ASN_INTEGER;
 		    result_n = *vars->val.integer;
